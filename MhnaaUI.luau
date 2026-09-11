@@ -519,6 +519,13 @@ function MhnaaUI:CreateWindow(opt)
         end
     end)
 
+    local function isPointInside(gui, point)
+        if not gui or not gui.Parent then return false end
+        local absPos = gui.AbsolutePosition
+        local absSize = gui.AbsoluteSize
+        return point.X >= absPos.X and point.X <= (absPos.X + absSize.X) and point.Y >= absPos.Y and point.Y <= (absPos.Y + absSize.Y)
+    end
+
     -- DRAGGING LOGIC (Smooth dragging from Topbar)
     local dragging = false
     local dragStart = nil
@@ -526,10 +533,23 @@ function MhnaaUI:CreateWindow(opt)
 
     Topbar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            if not SearchContainer:IsAncestorOf(input.Target) and input.Target ~= CloseBtn then
+            local pos = input.Position
+            local onSearch = isPointInside(SearchContainer, pos)
+            local onControls = isPointInside(WindowControls, pos)
+            local onBack = isPointInside(BackArrowBtn, pos)
+
+            if not onSearch and not onControls and not onBack then
                 dragging = true
                 dragStart = input.Position
                 startPos = MainFrame.Position
+
+                local inputConn
+                inputConn = input.Changed:Connect(function()
+                    if input.UserInputState == Enum.UserInputState.End then
+                        dragging = false
+                        if inputConn then inputConn:Disconnect() end
+                    end
+                end)
             end
         end
     end)
@@ -544,7 +564,12 @@ function MhnaaUI:CreateWindow(opt)
     UserInputService.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             local delta = input.Position - dragStart
-            MainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            MainFrame.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
         elseif resizing and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             local delta = input.Position - resizeStart
             local newWidth = math.max(540, startSize.X + delta.X)
