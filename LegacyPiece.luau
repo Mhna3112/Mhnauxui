@@ -47,7 +47,7 @@ end
 -- 1. LOAD THƯ VIỆN MHNAA UI
 -- ═══════════════════════════════════════════════════════════════════════════
 local MhnaaUI
-local GITHUB_RAW_URL = "https://raw.githubusercontent.com/Mhna3112/Mhnauxui/main/MhnaaUI.luau"
+local GITHUB_RAW_URL = "https://raw.githubusercontent.com/Mhna3112/Mhnauxui/main/MhnaaUI.luau?t=" .. tostring(os.time())
 
 local successGit, resultGit = pcall(function()
     return loadstring(game:HttpGet(GITHUB_RAW_URL))()
@@ -1536,3 +1536,16 @@ MhnaaUI:Notify({
     Content = "Đã nạp thành công bộ 6 Tab chuẩn NK Hub! Nhấn [RightControl] để ẩn/hiện.",
     Duration = 4
 })
+
+-- Mặc định chọn ngay Tab Home
+task.defer(function()
+    pcall(function()
+        if TabHome and TabHome.Select then
+            TabHome:Select()
+        elseif TabHome and TabHome.Button then
+            for _, c in pairs(getconnections(TabHome.Button.MouseButton1Click)) do
+                c:Fire()
+            end
+        end
+    end)
+end)
