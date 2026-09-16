@@ -97,7 +97,7 @@ local Config = {
     AutoUseSelectedSkill = false,
     SkillDelay = 0.5,
     SelectFarmMode = "Above", -- Above, Beside, Behind, Below
-    TweenSpeed = 240, -- Tốc độ bay Tween theo yêu cầu (240 studs/s)
+    TweenSpeed = 100, -- Tốc độ bay Tween an toàn (100 studs/s)
     InstantTween = false, -- Tùy chọn di chuyển tức thì (Instant Move) trong cùng đảo
     
     -- Main Tab (Farming)
@@ -347,7 +347,7 @@ local function tweenTo(targetCFrame, customSpeed)
     local hum = getHumanoid()
     if not char or not root or not hum or hum.Health <= 0 then return false end
 
-    local speed = customSpeed or Config.TweenSpeed or 240
+    local speed = customSpeed or Config.TweenSpeed or 100
     local targetPos = targetCFrame.Position
     local dist = (targetPos - root.Position).Magnitude
 
