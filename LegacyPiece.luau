@@ -1,16 +1,17 @@
 --[[
     ═══════════════════════════════════════════════════════════════════════════
-    ✨ MHNAA HUB [PRO] - HYBRID TELEPORT & TWEEN AUTO FARM ✨
-    Chuyên biệt cho [Bleach!] Legacy Piece (Max Level 12,000)
-    - Tự Động Cộng Điểm (Auto Stat: Weapon, Strength, Defense, Ability, All Evenly)
-    - Tự Động Hủy Quest Cũ Out-Level & Nhận Quest Mới Theo Cấp Độ Chính Xác
-    - Tự Động Teleport Qua Đảo Chứa Quest Tương Ứng (Không Bị Gameplay Paused)
-    - Dùng Tween Lướt Mượt Đến Bãi Quái Và Khóa Góc Đánh (Above, Beside, Behind, Under)
-    - Quản lý phiên chạy đơn (Single Instance) chống kẹt luồng ngầm
+    ✨ MHNAA HUB [PRO-NK] - FULL SUITE AUTO FARM & BOSS SYSTEM ✨
+    Phân chia chuẩn 6 Tab theo kiến trúc NK HUB:
+    - Tab 1: Home (Thông tin, Vũ khí, Auto Attack, Auto Skill, Khoảng cách)
+    - Tab 2: Main (Auto Farm Quái, Auto Quest theo Level, Multi-Farm, Chuyển sinh, Câu cá)
+    - Tab 3: Boss (Auto Farm Boss, Tự động triệu hồi Summon Boss qua Whisperer)
+    - Tab 4: Stats (Auto Up Stats, Amount, Multi-Select Stats, Reset)
+    - Tab 5: Teleport (Teleport Portal qua đảo không Pause, Teleport tới NPC)
+    - Tab 6: Miscellaneous (Server Hop, Black Screen, Tắt 3D Render, FPS Boost, Anti-AFK)
     ═══════════════════════════════════════════════════════════════════════════
 ]]
 
--- DỌN DẸP PHIÊN CHẠY CŨ
+-- DỌN DẸP PHIÊN CHẠY CŨ (SINGLE-INSTANCE CONTROLLER)
 if _G.MhnaaHub_Stop then
     pcall(_G.MhnaaHub_Stop)
 end
@@ -30,11 +31,12 @@ local HttpService = game:GetService("HttpService")
 local Lighting = game:GetService("Lighting")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CoreGui = game:GetService("CoreGui")
+local TeleportService = game:GetService("TeleportService")
 
 local LocalPlayer = Players.LocalPlayer
 local Camera = workspace.CurrentCamera
 
--- Dọn dẹp ScreenGui cũ nếu có
+-- Xóa giao diện cũ nếu có
 local safeContainer = (gethui and gethui()) or CoreGui
 local oldGui = safeContainer:FindFirstChild("Mhnaa_UI_Root")
 if oldGui then
@@ -70,9 +72,7 @@ if not MhnaaUI then
     return
 end
 
--- ═══════════════════════════════════════════════════════════════════════════
--- 2. TỰ ĐỘNG CHẶN BẢNG THÔNG BÁO GAMEPLAY PAUSED
--- ═══════════════════════════════════════════════════════════════════════════
+-- Tự động chặn bảng thông báo Gameplay Paused
 task.spawn(function()
     while scriptRunning do
         pcall(function()
@@ -86,53 +86,54 @@ task.spawn(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- 3. BẢNG CẤU HÌNH (CONFIG)
+-- 2. CẤU HÌNH TRUNG TÂM (CONFIG)
 -- ═══════════════════════════════════════════════════════════════════════════
 local Config = {
-    -- Auto Stat
-    AutoStat = false,
-    SelectedStat = "Weapon", -- "Weapon", "Strength", "Defense", "Ability", "All Evenly (Chia đều)"
-    StatPointsPerBatch = 10,
+    -- Home Tab
+    SelectWeapon = "Ace",
+    AutoAttack = false,
+    AttackSpeed = 0.08,
+    SelectedSkillTable = { "Z", "X", "C" },
+    AutoUseSelectedSkill = false,
+    SkillDelay = 0.5,
+    SelectFarmMode = "Above", -- Above, Beside, Behind, Below
+    DistanceY = 7,
+    TweenSpeed = 160,
     
-    -- Auto Prestige
+    -- Main Tab (Farming)
+    SelectedMob = "Ghoul Investigator",
+    AutoFarmSelectedMob = false,
+    AutoQuestByLevel = false,
+    SelectedMultiMob = {},
+    AutoFarmMulti = false,
     AutoPrestige = false,
     PrestigeMode = "Khi đủ nhiệm vụ",
-    
-    -- Auto Farm
-    AutoFarm = false,
-    AutoQuest = true,
-    FarmPosition = "Above (Bên trên)", -- "Above (Bên trên)", "Beside (Bên cạnh)", "Behind (Phía sau)", "Under (Bên dưới)"
-    FarmDistance = 7,
-    TweenSpeed = 160, -- Tốc độ bay Tween trên đảo (studs/s)
-    AutoAttack = true,
-    AttackSpeed = 0.08,
-    
-    -- Weapon & Skills
-    AutoEquipWeapon = true,
-    SelectedWeapon = "Ace",
-    AutoUseSkills = false,
-    SkillDelay = 0.5,
-    Skills = {
-        Z = true,
-        X = true,
-        C = true,
-        V = false,
-        E = false,
-        R = false
-    },
-    
-    -- Fishing
     AutoFish = false,
     FishingMode = "Fast / Instant Reel",
     AutoEquipRod = true,
     AutoSellFish = false,
     
-    -- Misc / Performance
+    -- Boss Tab
+    SelectedBoss = "Ken Kaneki",
+    SelectedBossTable = { "Ken Kaneki" },
+    AutoFarmSelectedBoss = false,
+    AutoSpawnBoss = true,
+    
+    -- Stats Tab
+    Amount = 10,
+    SelectedStatsTable = { "Weapon" },
+    AutoUpSelectedStats = false,
+    
+    -- Teleport Tab
+    SelectedMaps = "Tokyo Ghoul",
+    SelectedNPC = "",
+    
+    -- Misc Tab
     FPSBooster = false,
+    WhiteScreen = false,
+    BlackScreen = false,
     Disable3DRender = false,
     AntiAFK = true,
-    
-    -- Player Modifiers
     WalkSpeed = 16,
     JumpPower = 50,
     InfiniteJump = false,
@@ -140,8 +141,10 @@ local Config = {
 }
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- 4. BẢNG DỮ LIỆU CÁC QUEST CHÍNH THEO CẤP ĐỘ (CHÍNH XÁC TỪ QUESTDATA)
+-- 3. BẢNG DỮ LIỆU GAME (QUESTS, ISLANDS, BOSSES)
 -- ═══════════════════════════════════════════════════════════════════════════
+
+-- 21 Mốc Quest chuẩn xác theo cấp độ từ QuestData
 local QuestDatabase = {
     { minLevel = 0,    maxLevel = 50,   quest = "Quest Bandits",             npc = "Quest Bandits",             target = "Bandit",             island = "Starter Island" },
     { minLevel = 50,   maxLevel = 200,  quest = "Quest Bandit Leader",        npc = "Quest Bandit Leader",        target = "Bandit Leader",      island = "Starter Island" },
@@ -166,7 +169,13 @@ local QuestDatabase = {
     { minLevel = 8700, maxLevel = 9300, quest = "Quest Fishman Pirate",      npc = "Quest Fishman Pirate",      target = "Fishman Pirate",     island = "Fishman Island" }
 }
 
--- Tọa độ trung tâm hoặc Teleporter của từng Đảo
+-- Danh sách tên quái chuẩn để hiển thị trong Dropdown Main
+local AllMobNames = {}
+for _, q in ipairs(QuestDatabase) do
+    table.insert(AllMobNames, q.target)
+end
+
+-- Tọa độ trung tâm và Portal ID của 14 Đảo
 local IslandCenters = {
     ["Starter Island"]     = Vector3.new(-1644, 33, 1099),
     ["Jungle Island"]      = Vector3.new(-208, 25, 3108),
@@ -184,7 +193,6 @@ local IslandCenters = {
     ["Quincy Castle"]      = Vector3.new(-354, 22, 5153)
 }
 
--- Portal ID chính thức tương ứng
 local IslandPortalIds = {
     ["Starter Island"]     = "Starter",
     ["Jungle Island"]      = "JungleIsland",
@@ -202,22 +210,38 @@ local IslandPortalIds = {
     ["Quincy Castle"]      = "QuincyCastle"
 }
 
--- Điểm Teleport Spot theo Remote TeleportToIslandSpot
-local IslandSpots = {
-    ["Jujutsu Academy"]    = { Island = "Jujutsu Academy", Spot = "The Gatekeeper" },
-    ["Starter Island"]     = { Island = "Starter Island", Spot = "Mining" },
-    ["Legacy Island"]      = { Island = "Legacy Island", Spot = "Summon" },
-    ["7th Company Island"] = { Island = "7th Company Island", Spot = "Captain Burns" },
-    ["Fishman Island"]     = { Island = "Fishman Island", Spot = "Fishman Elder" },
-    ["Ice Island"]         = { Island = "Ice Island", Spot = "Fish Shop" },
-    ["Ruin City"]          = { Island = "Ruin City", Spot = "Sacrifice Table" },
-    ["Jungle Island"]      = { Island = "Jungle Island", Spot = "Flashstep" },
-    ["A-City"]             = { Island = "A-City", Spot = "Observation Haki" },
-    ["Quincy Castle"]      = { Island = "Quincy Castle", Spot = "Quincy Herald" }
+-- Bảng thông tin Boss và NPC triệu hồi (Whisperer)
+local BossConfig = {
+    ["Ken Kaneki"]              = { Summoner = "Gray Whisperer",     Island = "Tokyo Ghoul" },
+    ["Sosuke Aizen"]            = { Summoner = "The Whisperer",      Island = "Jungle Island" },
+    ["Ichigo Kurosaki"]         = { Summoner = "The Whisperer",      Island = "Jungle Island" },
+    ["Ichigo Kurosaki Bankai"]  = { Summoner = "The Whisperer",      Island = "Jungle Island" },
+    ["Satoru Gojo"]             = { Summoner = "Yellow Whisperer",   Island = "Jujutsu Academy" },
+    ["Ryomen Sukuna"]           = { Summoner = "Yellow Whisperer",   Island = "Jujutsu Academy" },
+    ["Blast"]                   = { Summoner = "White Whisperer",    Island = "A-City" },
+    ["Garou"]                   = { Summoner = "White Whisperer",    Island = "A-City" },
+    ["Flashy Flash"]            = { Summoner = "White Whisperer",    Island = "A-City" },
+    ["Akaza"]                   = { Summoner = "Pink Whisperer",     Island = "Starter Island" },
+    ["Chihora"]                 = { Summoner = "PauPau Whisperer",   Island = "Grave Island" },
+    ["Fishman Captain"]         = { Summoner = "Fish Whisperer",     Island = "Fishman Island" },
+    ["Undyne"]                  = { Summoner = "Undyne Summon",      Island = "Ruin City" },
+    ["Solemn Lament"]           = { Summoner = "Griefbound Ferryman",Island = "Ice Island" },
+    ["Ichigo True Bankai"]      = { Summoner = "Zangetsu",           Island = "Quincy Castle" },
+    ["Dio"]                     = { Summoner = "Sacrifice Table",    Island = "Ruin City" },
+    ["Cid Kagenou"]             = { Summoner = "Sacrifice Table",    Island = "Ruin City" },
+    ["The Red Mist"]            = { Summoner = "Sacrifice Table",    Island = "Ruin City" },
+    ["One-Eyed Owl"]            = { Summoner = "Sacrifice Table",    Island = "Ruin City" },
+    ["Demon Infernal"]          = { Summoner = "Sacrifice Table",    Island = "Ruin City" }
 }
 
+local AllBossNames = {}
+for bName, _ in pairs(BossConfig) do
+    table.insert(AllBossNames, bName)
+end
+table.sort(AllBossNames)
+
 -- ═══════════════════════════════════════════════════════════════════════════
--- 5. HÀM TRỢ GIÚP TIỆN ÍCH
+-- 4. HÀM TRỢ GIÚP TIỆN ÍCH (HELPERS)
 -- ═══════════════════════════════════════════════════════════════════════════
 local renv = getrenv and getrenv() or {}
 local function getInputFunction()
@@ -244,24 +268,26 @@ local function getHumanoid()
     return char and char:FindFirstChildOfClass("Humanoid")
 end
 
--- Xác định người chơi đang ở đảo nào dựa trên tọa độ
+local function HasValue(Table, Value)
+    return type(Table) == "table" and table.find(Table, Value) ~= nil
+end
+
 local function getCurrentIsland()
     local root = getRoot()
-    if not root then return "Unknown" end
+    if not root then return "Starter Island" end
     local pos = root.Position
-    local closestIsland = "Starter Island"
+    local closest = "Starter Island"
     local minDist = math.huge
     for isl, center in pairs(IslandCenters) do
         local dist = (pos - center).Magnitude
         if dist < minDist then
             minDist = dist
-            closestIsland = isl
+            closest = isl
         end
     end
-    return closestIsland
+    return closest
 end
 
--- Lấy Quest phù hợp nhất theo cấp độ
 local function getBestQuestInfo(level)
     local best = QuestDatabase[1]
     for _, q in ipairs(QuestDatabase) do
@@ -270,6 +296,15 @@ local function getBestQuestInfo(level)
         end
     end
     return best
+end
+
+local function getQuestInfoByTarget(mobName)
+    for _, q in ipairs(QuestDatabase) do
+        if string.lower(q.target) == string.lower(mobName) or string.find(string.lower(q.target), string.lower(mobName)) then
+            return q
+        end
+    end
+    return nil
 end
 
 local function getQuestInfoByName(questName)
@@ -282,7 +317,7 @@ local function getQuestInfoByName(questName)
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- 6. HỆ THỐNG TELEPORT QUA ĐẢO & TWEEN TRÊN ĐẢO (ZERO GAMEPLAY PAUSED)
+-- 5. HỆ THỐNG DI CHUYỂN HYBRID & TWEEN KHÓA VỊ TRÍ
 -- ═══════════════════════════════════════════════════════════════════════════
 local currentTween = nil
 local isTweening = false
@@ -295,7 +330,6 @@ local function stopCurrentTween()
     isTweening = false
 end
 
--- Tween mượt mà trên đảo tới mục tiêu
 local function tweenTo(targetCFrame, customSpeed)
     local char = getCharacter()
     local root = getRoot()
@@ -341,15 +375,12 @@ local function tweenTo(targetCFrame, customSpeed)
     return true
 end
 
--- Chuyển qua đảo khác an toàn bằng hệ thống Teleporter của game
 local function teleportToIsland(targetIsland)
     stopCurrentTween()
     local current = getCurrentIsland()
     if current == targetIsland then return true end
 
     local tpUI = getTeleportUI()
-    
-    -- Phương án 1: Dùng _G.TeleportUI chọn đảo và dịch chuyển
     if tpUI and tpUI.selectIsland and tpUI.teleport then
         pcall(function()
             tpUI:selectIsland(targetIsland)
@@ -360,58 +391,10 @@ local function teleportToIsland(targetIsland)
         if getCurrentIsland() == targetIsland then return true end
     end
 
-    -- Phương án 2: Kích hoạt Teleporter prompt trên đảo hiện tại nếu cần
-    local root = getRoot()
-    local nearestTeleporter = nil
-    local minDist = math.huge
-    if root and workspace:FindFirstChild("NPCs") then
-        for _, c in ipairs(workspace.NPCs:GetChildren()) do
-            if c.Name == "Teleporter" then
-                local dist = (c:GetPivot().Position - root.Position).Magnitude
-                if dist < minDist then
-                    minDist = dist
-                    nearestTeleporter = c
-                end
-            end
-        end
-    end
-
-    if nearestTeleporter and minDist > 8 and minDist < 600 then
-        tweenTo(nearestTeleporter:GetPivot() * CFrame.new(0, 0, 4), 220)
-        local prompt = nearestTeleporter:FindFirstChildWhichIsA("ProximityPrompt", true)
-        if prompt then
-            pcall(function() fireproximityprompt(prompt) end)
-            task.wait(0.4)
-        end
-        if tpUI and tpUI.selectIsland and tpUI.teleport then
-            pcall(function()
-                tpUI:selectIsland(targetIsland)
-                task.wait(0.2)
-                tpUI:teleport()
-            end)
-            task.wait(1.5)
-            if getCurrentIsland() == targetIsland then return true end
-        end
-    end
-
-    -- Phương án 3: Dùng Remote trực tiếp
-    local tpSpotRemote = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("TeleportToIslandSpot")
-    local tpPortalRemote = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("TeleportToPortal")
-
-    local spotInfo = IslandSpots[targetIsland]
-    if tpSpotRemote and spotInfo then
-        pcall(function()
-            tpSpotRemote:FireServer(spotInfo.Island, spotInfo.Spot)
-        end)
-        task.wait(1.2)
-        if getCurrentIsland() == targetIsland then return true end
-    end
-
     local portalId = IslandPortalIds[targetIsland]
+    local tpPortalRemote = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("TeleportToPortal")
     if tpPortalRemote and portalId then
-        pcall(function()
-            tpPortalRemote:FireServer(portalId)
-        end)
+        pcall(function() tpPortalRemote:FireServer(portalId) end)
         task.wait(1.2)
         if getCurrentIsland() == targetIsland then return true end
     end
@@ -419,7 +402,6 @@ local function teleportToIsland(targetIsland)
     return getCurrentIsland() == targetIsland
 end
 
--- Tính toán CFrame vị trí đứng quanh NPC / Quái theo tùy chọn
 local function calculateTargetCFrame(targetInstance, positionMode, distance)
     local targetCF
     if targetInstance:IsA("Model") then
@@ -438,15 +420,15 @@ local function calculateTargetCFrame(targetInstance, positionMode, distance)
         return nil
     end
 
-    distance = distance or 7
+    distance = distance or Config.DistanceY or 7
 
-    if positionMode == "Above (Bên trên)" then
+    if positionMode == "Above" or positionMode == "Upper" then
         return targetCF * CFrame.new(0, distance, 0) * CFrame.Angles(math.rad(-90), 0, 0)
-    elseif positionMode == "Beside (Bên cạnh)" then
+    elseif positionMode == "Beside" then
         return targetCF * CFrame.new(distance, 1, 0) * CFrame.Angles(0, math.rad(-90), 0)
-    elseif positionMode == "Behind (Phía sau)" then
+    elseif positionMode == "Behind" then
         return targetCF * CFrame.new(0, 1, distance)
-    elseif positionMode == "Under (Bên dưới)" then
+    elseif positionMode == "Below" or positionMode == "Under" then
         return targetCF * CFrame.new(0, -distance, 0) * CFrame.Angles(math.rad(90), 0, 0)
     else
         return targetCF * CFrame.new(0, distance, 0)
@@ -473,28 +455,107 @@ local function equipSelectedWeapon(weaponName)
     end
 end
 
+-- Quét danh sách vũ khí
+local WeaponList = {}
+local function refreshWeapons()
+    table.clear(WeaponList)
+    local char = LocalPlayer.Character
+    if char then
+        for _, t in ipairs(char:GetChildren()) do
+            if t:IsA("Tool") and not table.find(WeaponList, t.Name) then
+                table.insert(WeaponList, t.Name)
+            end
+        end
+    end
+    local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
+    if bp then
+        for _, t in ipairs(bp:GetChildren()) do
+            if t:IsA("Tool") and not table.find(WeaponList, t.Name) then
+                table.insert(WeaponList, t.Name)
+            end
+        end
+    end
+    if #WeaponList == 0 then
+        table.insert(WeaponList, "Ace")
+        table.insert(WeaponList, "Combat")
+    end
+end
+refreshWeapons()
+
 -- ═══════════════════════════════════════════════════════════════════════════
--- 7. AUTO STAT WORKER (TỰ ĐỘNG CỘNG ĐIỂM)
+-- 6. WORKERS TỰ ĐỘNG (ATTACK, SKILL, STATS, FARM, BOSS)
 -- ═══════════════════════════════════════════════════════════════════════════
+local currentCombatTarget = nil
+
+-- Worker: Tấn công thường (Fast Attack)
+task.spawn(function()
+    while scriptRunning do
+        task.wait(Config.AttackSpeed or 0.08)
+        if (Config.AutoAttack or Config.AutoFarmSelectedMob or Config.AutoQuestByLevel or Config.AutoFarmMulti or Config.AutoFarmSelectedBoss) 
+            and currentCombatTarget and not isTweening then
+            pcall(function()
+                local char = getCharacter()
+                if not char then return end
+                local tool = char:FindFirstChildOfClass("Tool")
+                if tool then
+                    tool:Activate()
+                end
+                VirtualUser:CaptureController()
+                VirtualUser:Button1Down(Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2))
+            end)
+        end
+    end
+end)
+
+-- Worker: Combo Chiêu Thức (Auto Skill)
+task.spawn(function()
+    local skillKeyMap = {
+        Z = Enum.KeyCode.Z,
+        X = Enum.KeyCode.X,
+        C = Enum.KeyCode.C,
+        V = Enum.KeyCode.V,
+        E = Enum.KeyCode.E,
+        R = Enum.KeyCode.R
+    }
+    while scriptRunning do
+        task.wait(Config.SkillDelay or 0.5)
+        if Config.AutoUseSelectedSkill and currentCombatTarget and not isTweening then
+            for _, k in ipairs(Config.SelectedSkillTable) do
+                local enumK = skillKeyMap[k]
+                if enumK and currentCombatTarget and not isTweening then
+                    pcall(function()
+                        VirtualInputManager:SendKeyEvent(true, enumK, false, game)
+                        task.wait(0.05)
+                        VirtualInputManager:SendKeyEvent(false, enumK, false, game)
+                    end)
+                    task.wait(Config.SkillDelay or 0.5)
+                end
+            end
+        end
+    end
+end)
+
+-- Worker: Tự Động Cộng Điểm (Auto Up Stats)
 task.spawn(function()
     while scriptRunning do
         task.wait(0.5)
-        if Config.AutoStat then
+        if Config.AutoUpSelectedStats then
             pcall(function()
                 local points = LocalPlayer.Data and LocalPlayer.Data:FindFirstChild("Points") and LocalPlayer.Data.Points.Value
                 if points and points > 0 then
                     local inputFunc = getInputFunction()
                     if inputFunc then
-                        local batch = math.clamp(Config.StatPointsPerBatch or 10, 1, points)
-                        if Config.SelectedStat == "All Evenly (Chia đều)" then
+                        local batch = math.clamp(Config.Amount or 10, 1, points)
+                        if HasValue(Config.SelectedStatsTable, "All Evenly") or HasValue(Config.SelectedStatsTable, "All Evenly (Chia đều)") then
                             local each = math.max(1, math.floor(batch / 4))
                             inputFunc:InvokeServer("AddPoint", "Weapon", each)
                             inputFunc:InvokeServer("AddPoint", "Strength", each)
                             inputFunc:InvokeServer("AddPoint", "Defense", each)
                             inputFunc:InvokeServer("AddPoint", "Ability", each)
                         else
-                            local stat = Config.SelectedStat or "Weapon"
-                            inputFunc:InvokeServer("AddPoint", stat, batch)
+                            for _, stat in ipairs(Config.SelectedStatsTable) do
+                                inputFunc:InvokeServer("AddPoint", stat, batch)
+                            end
                         end
                     end
                 end
@@ -503,39 +564,40 @@ task.spawn(function()
     end
 end)
 
--- ═══════════════════════════════════════════════════════════════════════════
--- 8. AUTO FARM WORKER CHÍNH (TELEPORT QUA ĐẢO + TWEEN FARM QUÁI)
--- ═══════════════════════════════════════════════════════════════════════════
-local currentMobTarget = nil
-
+-- Worker: Auto Farm Quái (Selected Mob & Auto Quest theo Level)
 task.spawn(function()
     while scriptRunning do
         task.wait(0.1)
-        if Config.AutoFarm then
+        local isMobFarming = (Config.AutoFarmSelectedMob or Config.AutoQuestByLevel or Config.AutoFarmMulti) and not Config.AutoFarmSelectedBoss
+        if isMobFarming then
             pcall(function()
                 local char = getCharacter()
                 local root = getRoot()
                 local hum = getHumanoid()
                 if not char or not root or not hum or hum.Health <= 0 then return end
 
-                if Config.AutoEquipWeapon then
-                    equipSelectedWeapon(Config.SelectedWeapon)
-                end
+                equipSelectedWeapon(Config.SelectWeapon)
 
                 local playerLevel = (LocalPlayer.Data and LocalPlayer.Data:FindFirstChild("Level") and LocalPlayer.Data.Level.Value) or 1
                 local inputFunc = getInputFunction()
 
-                -- 1. Quản lý trạng thái Quest hiện tại
+                -- Xác định mục tiêu quest
+                local targetQuestInfo = nil
+                if Config.AutoQuestByLevel then
+                    targetQuestInfo = getBestQuestInfo(playerLevel)
+                else
+                    targetQuestInfo = getQuestInfoByTarget(Config.SelectedMob) or QuestDatabase[1]
+                end
+
+                -- Quản lý Quest dở dang
                 local activeQuestFolder = LocalPlayer.Data and LocalPlayer.Data:FindFirstChild("Quests") and LocalPlayer.Data.Quests:FindFirstChild("Main")
                 local activeQuestObj = activeQuestFolder and activeQuestFolder:GetChildren()[1]
-
-                local targetQuestInfo = getBestQuestInfo(playerLevel)
 
                 if activeQuestObj then
                     local activeName = activeQuestObj.Name
                     local activeInfo = getQuestInfoByName(activeName)
 
-                    -- Kiểm tra nếu quest đã hoàn thành (Claim quest)
+                    -- Claim quest nếu đã xong
                     local isCompleted = activeQuestObj:FindFirstChild("Completed") and activeQuestObj.Completed.Value == true
                     if isCompleted and inputFunc then
                         inputFunc:InvokeServer("Quest", "Claim", activeName)
@@ -543,9 +605,8 @@ task.spawn(function()
                         return
                     end
 
-                    -- Kiểm tra nếu quest hiện tại đã out-level (Cấp người chơi đã vượt ngưỡng maxLevel của quest)
-                    if Config.AutoQuest and activeInfo and playerLevel >= activeInfo.maxLevel and activeName ~= targetQuestInfo.quest then
-                        -- Tự động hủy quest cũ để không bị kẹt ở đảo thấp cấp!
+                    -- Hủy quest nếu out-level (khi bật AutoQuestByLevel)
+                    if Config.AutoQuestByLevel and activeInfo and playerLevel >= activeInfo.maxLevel and activeName ~= targetQuestInfo.quest then
                         if inputFunc then
                             inputFunc:InvokeServer("Quest", "Cancel", activeName)
                             task.wait(0.5)
@@ -553,24 +614,21 @@ task.spawn(function()
                         return
                     end
 
-                    -- Nếu quest vẫn đang phù hợp thì tiếp tục làm quest này
                     if activeInfo then
                         targetQuestInfo = activeInfo
                     end
                 else
-                    -- Chưa có quest nào: Nếu bật AutoQuest, cần nhận quest mới
-                    if Config.AutoQuest and inputFunc then
+                    -- Nhận quest mới
+                    if inputFunc then
                         local neededIsland = targetQuestInfo.island
                         local currentIsland = getCurrentIsland()
 
-                        -- Nếu khác đảo, dịch chuyển sang đảo của Quest
                         if currentIsland ~= neededIsland then
                             teleportToIsland(neededIsland)
                             task.wait(1.5)
                             return
                         end
 
-                        -- Đã ở trên đảo: Tìm NPC giao quest
                         local npcModel = workspace.NPCs:FindFirstChild(targetQuestInfo.npc)
                         if npcModel then
                             local distToNpc = (npcModel:GetPivot().Position - root.Position).Magnitude
@@ -585,16 +643,15 @@ task.spawn(function()
                     end
                 end
 
-                -- 2. Kiểm tra Đảo hiện tại so với mục tiêu Farm
+                -- Chuyển đảo nếu khác
                 local neededIsland = targetQuestInfo.island
-                local currentIsland = getCurrentIsland()
-                if currentIsland ~= neededIsland then
+                if getCurrentIsland() ~= neededIsland then
                     teleportToIsland(neededIsland)
                     task.wait(1.5)
                     return
                 end
 
-                -- 3. Tìm Quái Mục Tiêu (Enemies)
+                -- Tìm quái mục tiêu
                 local bestMob = nil
                 local shortestDist = math.huge
                 local enemiesFolder = workspace:FindFirstChild("Enemies")
@@ -605,12 +662,20 @@ task.spawn(function()
                             local eHum = enemy:FindFirstChildOfClass("Humanoid")
                             local eRoot = enemy:FindFirstChild("HumanoidRootPart") or enemy:FindFirstChild("Torso") or enemy.PrimaryPart
                             if eHum and eRoot and eHum.Health > 0 then
-                                -- Ưu tiên quái đúng mục tiêu của quest
-                                local isQuestTarget = string.find(string.lower(enemy.Name), string.lower(targetQuestInfo.target))
-                                local dist = (eRoot.Position - root.Position).Magnitude
-                                if isQuestTarget then
-                                    dist = dist - 500 -- Ưu tiên cao hơn
+                                local match = false
+                                if Config.AutoFarmMulti and #Config.SelectedMultiMob > 0 then
+                                    for _, mName in ipairs(Config.SelectedMultiMob) do
+                                        if string.find(string.lower(enemy.Name), string.lower(mName)) then
+                                            match = true
+                                            break
+                                        end
+                                    end
+                                else
+                                    match = string.find(string.lower(enemy.Name), string.lower(targetQuestInfo.target))
                                 end
+
+                                local dist = (eRoot.Position - root.Position).Magnitude
+                                if match then dist = dist - 500 end
                                 if dist < shortestDist then
                                     shortestDist = dist
                                     bestMob = enemy
@@ -620,14 +685,13 @@ task.spawn(function()
                     end
                 end
 
-                currentMobTarget = bestMob
+                currentCombatTarget = bestMob
 
-                -- 4. Di chuyển & Khóa vị trí quái
                 if bestMob then
-                    local targetCF = calculateTargetCFrame(bestMob, Config.FarmPosition, Config.FarmDistance)
+                    local targetCF = calculateTargetCFrame(bestMob, Config.SelectFarmMode, Config.DistanceY)
                     if targetCF then
-                        local distToMob = (targetCF.Position - root.Position).Magnitude
-                        if distToMob > 10 then
+                        local dist = (targetCF.Position - root.Position).Magnitude
+                        if dist > 10 then
                             tweenTo(targetCF, Config.TweenSpeed)
                         else
                             root.Velocity = Vector3.zero
@@ -636,110 +700,97 @@ task.spawn(function()
                         end
                     end
                 else
-                    -- Chưa có quái: Tween nhẹ quanh vị trí Quest NPC để đợi quái hồi sinh
+                    -- Chưa có quái: Tween lơ lửng gần NPC
                     local npcModel = workspace.NPCs:FindFirstChild(targetQuestInfo.npc)
                     if npcModel then
                         local npcPos = npcModel:GetPivot().Position
-                        local distToNpc = (npcPos - root.Position).Magnitude
-                        if distToNpc > 25 then
+                        if (npcPos - root.Position).Magnitude > 25 then
                             tweenTo(CFrame.new(npcPos + Vector3.new(0, 15, 0)), Config.TweenSpeed)
                         else
-                            root.Velocity = Vector3.zero
-                            root.RotVelocity = Vector3.zero
                             root.CFrame = CFrame.new(npcPos + Vector3.new(0, 15, 0))
                         end
                     end
                 end
             end)
         else
-            stopCurrentTween()
-            currentMobTarget = nil
-        end
-    end
-end)
-
--- ═══════════════════════════════════════════════════════════════════════════
--- 9. VÒNG LẶP TẤN CÔNG (AUTO ATTACK & AUTO SKILL)
--- ═══════════════════════════════════════════════════════════════════════════
-task.spawn(function()
-    while scriptRunning do
-        task.wait(Config.AttackSpeed or 0.08)
-        if Config.AutoFarm and currentMobTarget and not isTweening then
-            pcall(function()
-                local char = getCharacter()
-                if not char then return end
-
-                if Config.AutoAttack then
-                    local tool = char:FindFirstChildOfClass("Tool")
-                    if tool then
-                        tool:Activate()
-                    end
-                    VirtualUser:CaptureController()
-                    VirtualUser:Button1Down(Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2))
-                end
-            end)
-        end
-    end
-end)
-
--- Auto Skill Combos
-task.spawn(function()
-    local skillKeys = {
-        { Key = "Z", EnumKey = Enum.KeyCode.Z },
-        { Key = "X", EnumKey = Enum.KeyCode.X },
-        { Key = "C", EnumKey = Enum.KeyCode.C },
-        { Key = "V", EnumKey = Enum.KeyCode.V },
-        { Key = "E", EnumKey = Enum.KeyCode.E },
-        { Key = "R", EnumKey = Enum.KeyCode.R }
-    }
-    while scriptRunning do
-        task.wait(Config.SkillDelay or 0.5)
-        if Config.AutoFarm and Config.AutoUseSkills and currentMobTarget and not isTweening then
-            for _, sk in ipairs(skillKeys) do
-                if Config.Skills[sk.Key] and currentMobTarget and not isTweening then
-                    pcall(function()
-                        VirtualInputManager:SendKeyEvent(true, sk.EnumKey, false, game)
-                        task.wait(0.05)
-                        VirtualInputManager:SendKeyEvent(false, sk.EnumKey, false, game)
-                    end)
-                    task.wait(Config.SkillDelay or 0.5)
-                end
+            if not Config.AutoFarmSelectedBoss then
+                currentCombatTarget = nil
             end
         end
     end
 end)
 
--- ═══════════════════════════════════════════════════════════════════════════
--- 10. AUTO PRESTIGE WORKER
--- ═══════════════════════════════════════════════════════════════════════════
+-- Worker: Auto Farm Boss & Triệu Hồi Boss (Whisperer System)
 task.spawn(function()
     while scriptRunning do
-        task.wait(2)
-        if Config.AutoPrestige then
+        task.wait(0.15)
+        if Config.AutoFarmSelectedBoss then
             pcall(function()
-                local inputFunc = getInputFunction()
-                if not inputFunc then return end
+                local char = getCharacter()
+                local root = getRoot()
+                local hum = getHumanoid()
+                if not char or not root or not hum or hum.Health <= 0 then return end
 
-                local pDataMod = ReplicatedStorage.Modules.Configurations:FindFirstChild("PrestigeData")
-                if pDataMod then
-                    local pData = require(pDataMod)
-                    local curPrestige = LocalPlayer.Data.Prestige.Value
-                    local curLevel = LocalPlayer.Data.Level.Value
-                    local canPrestige = true
+                equipSelectedWeapon(Config.SelectWeapon)
 
-                    if pData and pData.GetRequirements then
-                        local reqs = pData.GetRequirements(curPrestige + 1)
-                        if reqs then
-                            for _, req in ipairs(reqs) do
-                                if req.Type == "Level" and curLevel < req.Value then
-                                    canPrestige = false
+                local targetBossName = Config.SelectedBoss
+                local bossInfo = BossConfig[targetBossName]
+                local targetIsland = bossInfo and bossInfo.Island or "Tokyo Ghoul"
+
+                -- 1. Kiểm tra Boss đã xuất hiện trong workspace chưa
+                local currentBossModel = nil
+                local enemiesFolder = workspace:FindFirstChild("Enemies")
+                if enemiesFolder then
+                    for _, e in ipairs(enemiesFolder:GetChildren()) do
+                        if e:IsA("Model") and e:FindFirstChildOfClass("Humanoid") and e.Humanoid.Health > 0 then
+                            if string.find(string.lower(e.Name), string.lower(targetBossName)) then
+                                currentBossModel = e
+                                break
+                            end
+                        end
+                    end
+                end
+
+                -- 2. Nếu Boss chưa xuất hiện -> Đi triệu hồi bằng NPC Whisperer
+                if not currentBossModel then
+                    currentCombatTarget = nil
+                    if Config.AutoSpawnBoss and bossInfo and bossInfo.Summoner then
+                        -- Kiểm tra đảo của NPC triệu hồi
+                        if getCurrentIsland() ~= targetIsland then
+                            teleportToIsland(targetIsland)
+                            task.wait(1.5)
+                            return
+                        end
+
+                        -- Tìm NPC Summoner (Whisperer / Sacrifice Table / Zangetsu)
+                        local summonerNpc = workspace.NPCs:FindFirstChild(bossInfo.Summoner)
+                        if summonerNpc then
+                            local distToSummoner = (summonerNpc:GetPivot().Position - root.Position).Magnitude
+                            if distToSummoner > 20 then
+                                tweenTo(summonerNpc:GetPivot() * CFrame.new(0, 0, 5), Config.TweenSpeed)
+                            else
+                                local inputFunc = getInputFunction()
+                                if inputFunc then
+                                    inputFunc:InvokeServer("SpawnBoss", summonerNpc, targetBossName)
+                                    task.wait(1)
                                 end
                             end
                         end
                     end
+                    return
+                end
 
-                    if canPrestige then
-                        inputFunc:InvokeServer("Prestige")
+                -- 3. Khi Boss đã xuất hiện -> Khóa vị trí đánh
+                currentCombatTarget = currentBossModel
+                local targetCF = calculateTargetCFrame(currentBossModel, Config.SelectFarmMode, Config.DistanceY)
+                if targetCF then
+                    local dist = (targetCF.Position - root.Position).Magnitude
+                    if dist > 12 then
+                        tweenTo(targetCF, Config.TweenSpeed)
+                    else
+                        root.Velocity = Vector3.zero
+                        root.RotVelocity = Vector3.zero
+                        root.CFrame = targetCF
                     end
                 end
             end)
@@ -747,9 +798,7 @@ task.spawn(function()
     end
 end)
 
--- ═══════════════════════════════════════════════════════════════════════════
--- 11. AUTO FISHING SYSTEM
--- ═══════════════════════════════════════════════════════════════════════════
+-- Worker: Auto Fishing
 task.spawn(function()
     while scriptRunning do
         task.wait(0.5)
@@ -788,7 +837,6 @@ task.spawn(function()
                                     end
                                 end
                             end
-
                             local inputFunc = getInputFunction()
                             if inputFunc then
                                 inputFunc:InvokeServer("Settings", "AutoFishing", true)
@@ -801,9 +849,40 @@ task.spawn(function()
     end
 end)
 
--- ═══════════════════════════════════════════════════════════════════════════
--- 12. GIẢM LAG & TIỆN ÍCH
--- ═══════════════════════════════════════════════════════════════════════════
+-- Worker: Auto Prestige
+task.spawn(function()
+    while scriptRunning do
+        task.wait(2)
+        if Config.AutoPrestige then
+            pcall(function()
+                local inputFunc = getInputFunction()
+                local pDataMod = ReplicatedStorage.Modules.Configurations:FindFirstChild("PrestigeData")
+                if inputFunc and pDataMod then
+                    local pData = require(pDataMod)
+                    local curPrestige = LocalPlayer.Data.Prestige.Value
+                    local curLevel = LocalPlayer.Data.Level.Value
+                    local canPrestige = true
+
+                    if pData and pData.GetRequirements then
+                        local reqs = pData.GetRequirements(curPrestige + 1)
+                        if reqs then
+                            for _, req in ipairs(reqs) do
+                                if req.Type == "Level" and curLevel < req.Value then
+                                    canPrestige = false
+                                end
+                            end
+                        end
+                    end
+                    if canPrestige then
+                        inputFunc:InvokeServer("Prestige")
+                    end
+                end
+            end)
+        end
+    end
+end)
+
+-- Tiện ích: Giảm lag đồ họa
 local function applyFPSBoost()
     pcall(function()
         Lighting.GlobalShadows = false
@@ -846,9 +925,9 @@ UserInputService.JumpRequest:Connect(function()
     end
 end)
 
--- Noclip chung
+-- Noclip
 RunService.Stepped:Connect(function()
-    if Config.Noclip and not Config.AutoFarm and scriptRunning then
+    if Config.Noclip and not (Config.AutoFarmSelectedMob or Config.AutoQuestByLevel or Config.AutoFarmSelectedBoss) and scriptRunning then
         pcall(function()
             local char = LocalPlayer.Character
             if char then
@@ -863,242 +942,496 @@ RunService.Stepped:Connect(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- 13. GIAO DIỆN UX/UI (MAIN, MISC, SETTING)
+-- 7. GIAO DIỆN UX/UI (6 TABS CHUẨN KIẾN TRÚC NK HUB)
 -- ═══════════════════════════════════════════════════════════════════════════
 local Window = MhnaaUI:CreateWindow({
     Title = "Mhnaa Hub",
-    Tag = "[PRO-MULTI]",
+    Tag = "[NK-SUITE]",
     Game = "LEGACY PIECE",
-    Size = UDim2.new(0, 680, 0, 450),
+    Size = UDim2.new(0, 700, 0, 460),
     AccentColor = Color3.fromRGB(104, 157, 248),
     ToggleKey = Enum.KeyCode.RightControl
 })
 
--- Tạo 3 Tabs chính: Main, Misc, Setting
-local MainTab    = Window:CreateTab({ Name = "Main",    Icon = "⚡" })
-local MiscTab    = Window:CreateTab({ Name = "Misc",    Icon = "⚙️" })
-local SettingTab = Window:CreateTab({ Name = "Setting", Icon = "🛠️" })
+-- Tạo 6 Tab phân chia theo đúng phong cách NK HUB
+local TabHome     = Window:CreateTab({ Name = "Home",     Icon = "🏠" })
+local TabMain     = Window:CreateTab({ Name = "Main",     Icon = "⚔️" })
+local TabBoss     = Window:CreateTab({ Name = "Boss",     Icon = "💣" })
+local TabStats    = Window:CreateTab({ Name = "Stats",    Icon = "🌪️" })
+local TabTeleport = Window:CreateTab({ Name = "Teleport", Icon = "🌐" })
+local TabMisc     = Window:CreateTab({ Name = "Misc",     Icon = "⚙️" })
 
 -- ─────────────────────────────────────────────────────────────────────────
--- 🌟 MAIN TAB
+-- 🏠 TAB 1: HOME
 -- ─────────────────────────────────────────────────────────────────────────
-MainTab:CreateSection("TỰ ĐỘNG CỘNG ĐIỂM (AUTO STAT)")
+TabHome:CreateSection("THÔNG TIN NGƯỜI CHƠI (LIVE STATS)")
 
-MainTab:CreateToggle({
-    Title = "Auto Stat (Tự động cộng điểm)",
-    Description = "Tự động phát hiện điểm Points dư thừa và cộng vào thuộc tính đã chọn",
-    Default = Config.AutoStat,
-    Callback = function(state) Config.AutoStat = state end
+local homeInfoLabel = TabHome:CreateLabel({
+    Title = "Đang tải dữ liệu nhân vật..."
 })
 
-MainTab:CreateDropdown({
-    Title = "Chọn Chỉ Số Ưu Tiên",
-    Options = {
-        "Weapon",
-        "Strength",
-        "Defense",
-        "Ability",
-        "All Evenly (Chia đều)"
-    },
-    Default = Config.SelectedStat,
-    Callback = function(selected) Config.SelectedStat = selected end
-})
-
-MainTab:CreateSlider({
-    Title = "Số Điểm Mỗi Đợt Cộng (Batch Amount)",
-    Min = 1,
-    Max = 100,
-    Default = Config.StatPointsPerBatch,
-    Suffix = " pts",
-    Callback = function(val) Config.StatPointsPerBatch = val end
-})
-
-MainTab:CreateSection("AUTO PRESTIGE / CHUYỂN SINH")
-
-MainTab:CreateToggle({
-    Title = "Auto Prestige (Tự động chuyển sinh)",
-    Description = "Tự động kiểm tra điều kiện và chuyển sinh ngay khi đủ điều kiện",
-    Default = Config.AutoPrestige,
-    Callback = function(state) Config.AutoPrestige = state end
-})
-
-MainTab:CreateDropdown({
-    Title = "Chế độ Prestige",
-    Options = { "Khi đủ nhiệm vụ", "Khi đạt Max Level", "Ngay lập tức" },
-    Default = Config.PrestigeMode,
-    Callback = function(selected) Config.PrestigeMode = selected end
-})
-
-MainTab:CreateSection("AUTO FARM (TELEPORT ĐẢO + TWEEN QUÁI)")
-
-MainTab:CreateToggle({
-    Title = "Auto Farm Mobs",
-    Description = "Tự động tìm đảo, tele cổng không bị paused -> Tween bay mượt đến quái và farm",
-    Default = Config.AutoFarm,
-    Callback = function(state)
-        Config.AutoFarm = state
-        if not state then
-            stopCurrentTween()
-            currentMobTarget = nil
-        end
+task.spawn(function()
+    while scriptRunning do
+        pcall(function()
+            if LocalPlayer.Data then
+                local lvl = LocalPlayer.Data:FindFirstChild("Level") and LocalPlayer.Data.Level.Value or 0
+                local pts = LocalPlayer.Data:FindFirstChild("Points") and LocalPlayer.Data.Points.Value or 0
+                local curIsland = getCurrentIsland()
+                local qFolder = LocalPlayer.Data:FindFirstChild("Quests") and LocalPlayer.Data.Quests:FindFirstChild("Main")
+                local qName = (qFolder and #qFolder:GetChildren() > 0) and qFolder:GetChildren()[1].Name or "Không có"
+                
+                homeInfoLabel:SetText(string.format("Level: %s | Points: %s | Đảo: %s\nNhiệm vụ: %s", tostring(lvl), tostring(pts), curIsland, qName))
+            end
+        end)
+        task.wait(1)
     end
-})
+end)
 
-MainTab:CreateToggle({
-    Title = "Auto Nhận Quest Theo Level & Đổi Đảo",
-    Description = "Tự động hủy quest cũ out-level, tele sang đảo mới và nhận quest theo cấp",
-    Default = Config.AutoQuest,
-    Callback = function(state) Config.AutoQuest = state end
-})
+TabHome:CreateSection("VŨ KHÍ (WEAPON)")
 
-MainTab:CreateSlider({
-    Title = "Tốc Độ Bay Tween (Tween Speed)",
-    Min = 50,
-    Max = 300,
-    Default = Config.TweenSpeed,
-    Suffix = " studs/s",
+local weaponDropdown = TabHome:CreateDropdown({
+    Title = "Select Weapon (Chọn vũ khí)",
+    Options = WeaponList,
+    Default = WeaponList[1] or "Ace",
     Callback = function(val)
-        Config.TweenSpeed = val
+        Config.SelectWeapon = val
     end
 })
 
-MainTab:CreateDropdown({
-    Title = "Vị trí đứng quanh NPC / Quái",
-    Options = {
-        "Above (Bên trên)",
-        "Beside (Bên cạnh)",
-        "Behind (Phía sau)",
-        "Under (Bên dưới)"
-    },
-    Default = Config.FarmPosition,
-    Callback = function(selected) Config.FarmPosition = selected end
+TabHome:CreateButton({
+    Title = "Refresh Weapon (Làm mới túi đồ)",
+    Description = "Quét lại toàn bộ vũ khí hiện có trong Balo",
+    Callback = function()
+        refreshWeapons()
+        weaponDropdown:Set(WeaponList)
+        MhnaaUI:Notify({ Title = "Weapon", Content = "Đã cập nhật danh sách vũ khí!", Duration = 2 })
+    end
 })
 
-MainTab:CreateSlider({
-    Title = "Khoảng cách đứng (Distance)",
-    Min = 3,
-    Max = 25,
-    Default = Config.FarmDistance,
-    Suffix = " studs",
-    Callback = function(val) Config.FarmDistance = val end
-})
+TabHome:CreateSection("TẤN CÔNG (ATTACK)")
 
-MainTab:CreateToggle({
-    Title = "Auto Fast Attack",
-    Description = "Tự động kích hoạt đòn đánh chém liên tục với tốc độ cao",
+TabHome:CreateToggle({
+    Title = "Auto Attack",
+    Description = "Tự động chém liên tục với tốc độ cao",
     Default = Config.AutoAttack,
     Callback = function(state) Config.AutoAttack = state end
 })
 
-MainTab:CreateSection("VŨ KHÍ & AUTO SKILL")
-
-MainTab:CreateToggle({
-    Title = "Auto Equip Weapon (Tự Cầm Vũ Khí)",
-    Description = "Tự động rút và trang bị vũ khí đã chọn lên tay",
-    Default = Config.AutoEquipWeapon,
-    Callback = function(state) Config.AutoEquipWeapon = state end
+TabHome:CreateSlider({
+    Title = "Tốc độ chém (Attack Delay)",
+    Min = 0.05,
+    Max = 0.5,
+    Default = Config.AttackSpeed,
+    Decimals = 2,
+    Suffix = "s",
+    Callback = function(val) Config.AttackSpeed = val end
 })
 
-MainTab:CreateDropdown({
-    Title = "Chọn Loại Vũ Khí",
-    Options = { "Ace", "Combat", "Tatsumaki", "Joestar", "Sword" },
-    Default = Config.SelectedWeapon,
-    Callback = function(selected) Config.SelectedWeapon = selected end
+TabHome:CreateSection("KỸ NĂNG (SKILL)")
+
+TabHome:CreateDropdown({
+    Title = "Select Skill (Chọn phím chiêu thức)",
+    Options = { "Z", "X", "C", "V", "E", "R" },
+    Default = "Z",
+    MultiSelect = true,
+    Callback = function(tbl)
+        Config.SelectedSkillTable = {}
+        for k, v in pairs(tbl) do
+            if v == true then table.insert(Config.SelectedSkillTable, k) end
+        end
+    end
 })
 
-MainTab:CreateToggle({
-    Title = "Auto Sử Dụng Chiêu Thức (Skills)",
-    Description = "Tự động tung combo các chiêu thức đã chọn khi farm",
-    Default = Config.AutoUseSkills,
-    Callback = function(state) Config.AutoUseSkills = state end
+TabHome:CreateToggle({
+    Title = "Auto Use Selected Skill",
+    Description = "Tự động tung các chiêu thức đã chọn theo chu kỳ",
+    Default = Config.AutoUseSelectedSkill,
+    Callback = function(state) Config.AutoUseSelectedSkill = state end
 })
 
-MainTab:CreateToggle({
-    Title = "Skill [Z]",
-    Description = "Tự động tung chiêu phím Z khi farm",
-    Default = Config.Skills.Z,
-    Callback = function(s) Config.Skills.Z = s end
-})
-
-MainTab:CreateToggle({
-    Title = "Skill [X]",
-    Description = "Tự động tung chiêu phím X khi farm",
-    Default = Config.Skills.X,
-    Callback = function(s) Config.Skills.X = s end
-})
-
-MainTab:CreateToggle({
-    Title = "Skill [C]",
-    Description = "Tự động tung chiêu phím C khi farm",
-    Default = Config.Skills.C,
-    Callback = function(s) Config.Skills.C = s end
-})
-
-MainTab:CreateToggle({
-    Title = "Skill [V]",
-    Description = "Tự động tung chiêu phím V khi farm",
-    Default = Config.Skills.V,
-    Callback = function(s) Config.Skills.V = s end
-})
-
-MainTab:CreateToggle({
-    Title = "Skill [E]",
-    Description = "Tự động tung chiêu phím E khi farm",
-    Default = Config.Skills.E,
-    Callback = function(s) Config.Skills.E = s end
-})
-
-MainTab:CreateToggle({
-    Title = "Skill [R]",
-    Description = "Tự động tung chiêu phím R khi farm",
-    Default = Config.Skills.R,
-    Callback = function(s) Config.Skills.R = s end
-})
-
-MainTab:CreateSlider({
-    Title = "Thời gian nghỉ giữa các chiêu",
+TabHome:CreateSlider({
+    Title = "Skill Delay (Độ trễ tung chiêu)",
     Min = 0.1,
-    Max = 3.0,
+    Max = 2.0,
     Default = Config.SkillDelay,
     Decimals = 1,
     Suffix = "s",
     Callback = function(val) Config.SkillDelay = val end
 })
 
-MainTab:CreateSection("AUTO CÂU CÁ (MAIN)")
+TabHome:CreateSection("KHOẢNG CÁCH FARM (DISTANCE FARM)")
 
-MainTab:CreateToggle({
+TabHome:CreateDropdown({
+    Title = "Select Farm Mode (Góc đứng đánh)",
+    Options = { "Above", "Behind", "Beside", "Below" },
+    Default = Config.SelectFarmMode,
+    Callback = function(val) Config.SelectFarmMode = val end
+})
+
+TabHome:CreateSlider({
+    Title = "Farming Distance (Khoảng cách đứng)",
+    Min = 3,
+    Max = 25,
+    Default = Config.DistanceY,
+    Suffix = " studs",
+    Callback = function(val) Config.DistanceY = val end
+})
+
+TabHome:CreateSlider({
+    Title = "Tween Speed (Tốc độ bay Tween)",
+    Min = 50,
+    Max = 300,
+    Default = Config.TweenSpeed,
+    Suffix = " studs/s",
+    Callback = function(val) Config.TweenSpeed = val end
+})
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- ⚔️ TAB 2: MAIN
+-- ─────────────────────────────────────────────────────────────────────────
+TabMain:CreateSection("AUTO FARM THEO QUÁI CHỌN (SINGLE FARM)")
+
+TabMain:CreateDropdown({
+    Title = "Select Mob (Chọn quái cần farm)",
+    Options = AllMobNames,
+    Default = "Ghoul Investigator",
+    Callback = function(val) Config.SelectedMob = val end
+})
+
+TabMain:CreateToggle({
+    Title = "Auto Farm Selected Mob",
+    Description = "Tự động nhận quest tương ứng và bay đến farm quái đã chọn",
+    Default = Config.AutoFarmSelectedMob,
+    Callback = function(state)
+        Config.AutoFarmSelectedMob = state
+        if not state then stopCurrentTween() currentCombatTarget = nil end
+    end
+})
+
+TabMain:CreateSection("AUTO QUEST THEO LEVEL (LEVEL PROGRESSION)")
+
+TabMain:CreateToggle({
+    Title = "Auto Farm Theo Cấp Độ (Auto Level 0 - 9300+)",
+    Description = "Tự động hủy quest cũ out-level, tele sang đảo mới và nhận quest theo cấp",
+    Default = Config.AutoQuestByLevel,
+    Callback = function(state)
+        Config.AutoQuestByLevel = state
+        if not state then stopCurrentTween() currentCombatTarget = nil end
+    end
+})
+
+TabMain:CreateSection("AUTO FARM NHIỀU QUÁI (MULTI-SELECT)")
+
+TabMain:CreateDropdown({
+    Title = "Select Multi Mob (Chọn nhiều loại quái)",
+    Options = AllMobNames,
+    Default = AllMobNames[1] or "Bandit",
+    MultiSelect = true,
+    Callback = function(tbl)
+        Config.SelectedMultiMob = {}
+        for k, v in pairs(tbl) do
+            if v == true then table.insert(Config.SelectedMultiMob, k) end
+        end
+    end
+})
+
+TabMain:CreateToggle({
+    Title = "Auto Farm Multi Selected Mob",
+    Description = "Tự động gom và farm lần lượt các loại quái đã chọn",
+    Default = Config.AutoFarmMulti,
+    Callback = function(state)
+        Config.AutoFarmMulti = state
+        if not state then stopCurrentTween() currentCombatTarget = nil end
+    end
+})
+
+TabMain:CreateSection("AUTO PRESTIGE (CHUYỂN SINH)")
+
+TabMain:CreateToggle({
+    Title = "Auto Prestige",
+    Description = "Tự động kiểm tra điều kiện và chuyển sinh ngay khi đủ điều kiện",
+    Default = Config.AutoPrestige,
+    Callback = function(state) Config.AutoPrestige = state end
+})
+
+TabMain:CreateDropdown({
+    Title = "Chế độ Prestige",
+    Options = { "Khi đủ nhiệm vụ", "Khi đạt Max Level", "Ngay lập tức" },
+    Default = Config.PrestigeMode,
+    Callback = function(val) Config.PrestigeMode = val end
+})
+
+TabMain:CreateSection("AUTO CÂU CÁ (FISHING)")
+
+TabMain:CreateToggle({
     Title = "Auto Câu Cá",
     Description = "Tự động thả câu và kéo cá khi có cắn câu",
     Default = Config.AutoFish,
     Callback = function(state) Config.AutoFish = state end
 })
 
-MainTab:CreateDropdown({
+TabMain:CreateDropdown({
     Title = "Chế độ kéo cần",
     Options = { "Fast / Instant Reel", "Legit / Normal" },
     Default = Config.FishingMode,
-    Callback = function(selected) Config.FishingMode = selected end
+    Callback = function(val) Config.FishingMode = val end
 })
 
 -- ─────────────────────────────────────────────────────────────────────────
--- ⚙️ MISC TAB
+-- 💣 TAB 3: BOSS (AUTO FARM & SUMMON BOSS)
 -- ─────────────────────────────────────────────────────────────────────────
-MiscTab:CreateSection("GIẢM LAG & TỐI ƯU HIỆU NĂNG")
+TabBoss:CreateSection("AUTO FARM BOSS ĐÃ CHỌN (SELECTED BOSS)")
 
-MiscTab:CreateToggle({
-    Title = "Giảm Lag Đồ Họa (FPS Booster)",
-    Description = "Tắt bóng đổ, khử hiệu ứng hạt, hạ chi tiết vật liệu để tối đa FPS",
-    Default = Config.FPSBooster,
-    Callback = function(state)
-        Config.FPSBooster = state
-        if state then applyFPSBoost() end
+TabBoss:CreateDropdown({
+    Title = "Select Boss (Chọn Boss)",
+    Options = AllBossNames,
+    Default = "Ken Kaneki",
+    Callback = function(val)
+        Config.SelectedBoss = val
     end
 })
 
-MiscTab:CreateToggle({
-    Title = "Tắt Render 3D (Siêu Nhẹ Máy / Treo Đêm)",
-    Description = "Dừng vẽ thế giới 3D giúp GPU về 0% khi cắm máy farm liên tục",
+TabBoss:CreateToggle({
+    Title = "Auto Spawn Boss (Tự động triệu hồi)",
+    Description = "Tự động bay đến NPC Whisperer tương ứng và triệu hồi Boss nếu chưa spawn",
+    Default = Config.AutoSpawnBoss,
+    Callback = function(state) Config.AutoSpawnBoss = state end
+})
+
+TabBoss:CreateToggle({
+    Title = "Auto Farm Selected Boss",
+    Description = "Tự động dịch chuyển, khóa góc đánh và tiêu diệt Boss đã chọn",
+    Default = Config.AutoFarmSelectedBoss,
+    Callback = function(state)
+        Config.AutoFarmSelectedBoss = state
+        if not state then stopCurrentTween() currentCombatTarget = nil end
+    end
+})
+
+TabBoss:CreateButton({
+    Title = "Force Spawn Selected Boss (Triệu hồi ngay)",
+    Description = "Lập tức gọi lệnh triệu hồi Boss đã chọn",
+    Callback = function()
+        local bInfo = BossConfig[Config.SelectedBoss]
+        local summoner = bInfo and workspace.NPCs:FindFirstChild(bInfo.Summoner)
+        local inputFunc = getInputFunction()
+        if inputFunc and summoner then
+            inputFunc:InvokeServer("SpawnBoss", summoner, Config.SelectedBoss)
+            MhnaaUI:Notify({ Title = "Boss System", Content = "Đã gửi yêu cầu triệu hồi: " .. Config.SelectedBoss, Duration = 3 })
+        else
+            MhnaaUI:Notify({ Title = "Boss System", Content = "Không tìm thấy NPC triệu hồi của Boss này!", Duration = 3 })
+        end
+    end
+})
+
+TabBoss:CreateSection("AUTO FARM NHIỀU BOSS (MULTI BOSS)")
+
+TabBoss:CreateDropdown({
+    Title = "Select Multi Bosses (Chọn nhiều Boss)",
+    Options = AllBossNames,
+    Default = AllBossNames[1] or "Ken Kaneki",
+    MultiSelect = true,
+    Callback = function(tbl)
+        Config.SelectedBossTable = {}
+        for k, v in pairs(tbl) do
+            if v == true then table.insert(Config.SelectedBossTable, k) end
+        end
+    end
+})
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- 🌪️ TAB 4: STATS
+-- ─────────────────────────────────────────────────────────────────────────
+TabStats:CreateSection("CỘNG ĐIỂM TIỀM NĂNG (STATS)")
+
+TabStats:CreateSlider({
+    Title = "Amount (Số điểm mỗi lần cộng)",
+    Min = 1,
+    Max = 200,
+    Default = Config.Amount,
+    Suffix = " pts",
+    Callback = function(val) Config.Amount = val end
+})
+
+TabStats:CreateDropdown({
+    Title = "Select Stats (Chọn chỉ số ưu tiên)",
+    Options = { "Weapon", "Strength", "Defense", "Ability", "All Evenly" },
+    Default = "Weapon",
+    MultiSelect = true,
+    Callback = function(tbl)
+        Config.SelectedStatsTable = {}
+        for k, v in pairs(tbl) do
+            if v == true then table.insert(Config.SelectedStatsTable, k) end
+        end
+    end
+})
+
+TabStats:CreateToggle({
+    Title = "Auto Up Selected Stats",
+    Description = "Tự động phát hiện Points dư và cộng vào chỉ số đã chọn",
+    Default = Config.AutoUpSelectedStats,
+    Callback = function(state) Config.AutoUpSelectedStats = state end
+})
+
+TabStats:CreateButton({
+    Title = "Cộng Toàn Bộ Điểm Vào Weapon",
+    Callback = function()
+        local pts = LocalPlayer.Data and LocalPlayer.Data:FindFirstChild("Points") and LocalPlayer.Data.Points.Value or 0
+        local inputFunc = getInputFunction()
+        if inputFunc and pts > 0 then
+            inputFunc:InvokeServer("AddPoint", "Weapon", pts)
+            MhnaaUI:Notify({ Title = "Stats", Content = "Đã cộng toàn bộ " .. pts .. " điểm vào Weapon!", Duration = 3 })
+        end
+    end
+})
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- 🌐 TAB 5: TELEPORT
+-- ─────────────────────────────────────────────────────────────────────────
+TabTeleport:CreateSection("TELEPORT TO MAPS (DỊCH CHUYỂN QUA ĐẢO)")
+
+local IslandNameList = {}
+for isl, _ in pairs(IslandCenters) do
+    table.insert(IslandNameList, isl)
+end
+table.sort(IslandNameList)
+
+TabTeleport:CreateDropdown({
+    Title = "Select Map (Chọn đảo)",
+    Options = IslandNameList,
+    Default = "Tokyo Ghoul",
+    Callback = function(val) Config.SelectedMaps = val end
+})
+
+TabTeleport:CreateButton({
+    Title = "Teleport To Map",
+    Description = "Dịch chuyển tức thì qua cổng game (0% Gameplay Paused)",
+    Callback = function()
+        teleportToIsland(Config.SelectedMaps)
+    end
+})
+
+TabTeleport:CreateSection("TELEPORT TO NPCS (DỊCH CHUYỂN TỚI NPC)")
+
+local AllNpcNames = {}
+if workspace:FindFirstChild("NPCs") then
+    for _, c in ipairs(workspace.NPCs:GetChildren()) do
+        if not table.find(AllNpcNames, c.Name) then
+            table.insert(AllNpcNames, c.Name)
+        end
+    end
+end
+table.sort(AllNpcNames)
+
+local npcDropdown = TabTeleport:CreateDropdown({
+    Title = "Select NPC (Chọn NPC)",
+    Options = AllNpcNames,
+    Default = AllNpcNames[1] or "",
+    Callback = function(val) Config.SelectedNPC = val end
+})
+
+TabTeleport:CreateButton({
+    Title = "Teleport To NPC",
+    Description = "Dùng Tween lướt mượt đến trước mặt NPC đã chọn",
+    Callback = function()
+        local targetNpc = workspace.NPCs:FindFirstChild(Config.SelectedNPC)
+        if targetNpc then
+            tweenTo(targetNpc:GetPivot() * CFrame.new(0, 0, 4), Config.TweenSpeed)
+        end
+    end
+})
+
+TabTeleport:CreateSection("TIỆN ÍCH KHẨN CẤP")
+
+TabTeleport:CreateButton({
+    Title = "Về Đảo Chính (Legacy Island)",
+    Callback = function()
+        teleportToIsland("Legacy Island")
+    end
+})
+
+TabTeleport:CreateButton({
+    Title = "Hủy Quest Đang Kẹt (Force Cancel Quest)",
+    Callback = function()
+        local inputFunc = getInputFunction()
+        local qFolder = LocalPlayer.Data and LocalPlayer.Data:FindFirstChild("Quests") and LocalPlayer.Data.Quests:FindFirstChild("Main")
+        if inputFunc and qFolder and #qFolder:GetChildren() > 0 then
+            local qName = qFolder:GetChildren()[1].Name
+            inputFunc:InvokeServer("Quest", "Cancel", qName)
+            MhnaaUI:Notify({ Title = "Quest", Content = "Đã hủy quest: " .. qName, Duration = 3 })
+        end
+    end
+})
+
+-- ─────────────────────────────────────────────────────────────────────────
+-- ⚙️ TAB 6: MISCELLANEOUS
+-- ─────────────────────────────────────────────────────────────────────────
+TabMisc:CreateSection("SERVER")
+
+TabMisc:CreateButton({
+    Title = "Rejoin Server (Vào lại server)",
+    Callback = function()
+        TeleportService:TeleportToPlaceInstance(game.PlaceId, game.JobId, LocalPlayer)
+    end
+})
+
+TabMisc:CreateButton({
+    Title = "Hop Server (Đổi server ngẫu nhiên)",
+    Callback = function()
+        pcall(function()
+            local sfUrl = "https://games.roblox.com/v1/games/" .. game.PlaceId .. "/servers/Public?sortOrder=Desc&limit=100"
+            local req = HttpService:JSONDecode(game:HttpGet(sfUrl))
+            if req and req.data then
+                for _, s in ipairs(req.data) do
+                    if s.playing < s.maxPlayers and s.id ~= game.JobId then
+                        TeleportService:TeleportToPlaceInstance(game.PlaceId, s.id, LocalPlayer)
+                        break
+                    end
+                end
+            end
+        end)
+    end
+})
+
+TabMisc:CreateSection("OPTIMIZE (TỐI ƯU HÓA MÁY)")
+
+TabMisc:CreateButton({
+    Title = "White Screen (Bật/Tắt màn hình trắng)",
+    Callback = function()
+        Config.WhiteScreen = not Config.WhiteScreen
+        RunService:Set3dRenderingEnabled(not Config.WhiteScreen)
+        MhnaaUI:Notify({ Title = "Optimize", Content = "White Screen: " .. tostring(Config.WhiteScreen), Duration = 2 })
+    end
+})
+
+TabMisc:CreateButton({
+    Title = "Black Screen (Bật/Tắt màn hình đen)",
+    Callback = function()
+        local existing = LocalPlayer.PlayerGui:FindFirstChild("BlackoutOverlay")
+        if existing then
+            existing:Destroy()
+            MhnaaUI:Notify({ Title = "Optimize", Content = "Đã tắt Black Screen", Duration = 2 })
+        else
+            local screenGui = Instance.new("ScreenGui")
+            screenGui.Name = "BlackoutOverlay"
+            screenGui.ResetOnSpawn = false
+            screenGui.IgnoreGuiInset = true
+            screenGui.DisplayOrder = 999999
+            screenGui.Parent = LocalPlayer.PlayerGui
+
+            local frame = Instance.new("Frame")
+            frame.Size = UDim2.new(1, 0, 1, 0)
+            frame.BackgroundColor3 = Color3.new(0, 0, 0)
+            frame.BorderSizePixel = 0
+            frame.Parent = screenGui
+            MhnaaUI:Notify({ Title = "Optimize", Content = "Đã bật Black Screen", Duration = 2 })
+        end
+    end
+})
+
+TabMisc:CreateToggle({
+    Title = "Tắt Render 3D (GPU 0% - Treo Đêm)",
+    Description = "Dừng dựng hình 3D giúp GPU cực mát khi cắm farm qua đêm",
     Default = Config.Disable3DRender,
     Callback = function(state)
         Config.Disable3DRender = state
@@ -1106,17 +1439,20 @@ MiscTab:CreateToggle({
     end
 })
 
-MiscTab:CreateToggle({
-    Title = "Anti-AFK (Chống Mất Kết Nối)",
-    Description = "Ngăn Roblox kick sau 20 phút không hoạt động",
-    Default = Config.AntiAFK,
-    Callback = function(state) Config.AntiAFK = state end
+TabMisc:CreateToggle({
+    Title = "FPS Booster (Giảm lag đồ họa)",
+    Description = "Khử bóng đổ, chuyển vật liệu nhựa trơn, tắt hiệu ứng hạt",
+    Default = Config.FPSBooster,
+    Callback = function(state)
+        Config.FPSBooster = state
+        if state then applyFPSBoost() end
+    end
 })
 
-MiscTab:CreateSection("DI CHUYỂN & NHÂN VẬT")
+TabMisc:CreateSection("DI CHUYỂN & CHỐNG AFK")
 
-MiscTab:CreateSlider({
-    Title = "Tốc Độ Di Chuyển (WalkSpeed)",
+TabMisc:CreateSlider({
+    Title = "WalkSpeed (Tốc độ chạy)",
     Min = 16,
     Max = 250,
     Default = Config.WalkSpeed,
@@ -1128,8 +1464,8 @@ MiscTab:CreateSlider({
     end
 })
 
-MiscTab:CreateSlider({
-    Title = "Độ Cao Nhảy (JumpPower)",
+TabMisc:CreateSlider({
+    Title = "JumpPower (Độ cao nhảy)",
     Min = 50,
     Max = 300,
     Default = Config.JumpPower,
@@ -1144,50 +1480,33 @@ MiscTab:CreateSlider({
     end
 })
 
-MiscTab:CreateToggle({
-    Title = "Infinite Jump (Nhảy Vô Hạn)",
-    Description = "Cho phép nhảy liên tục giữa không trung",
+TabMisc:CreateToggle({
+    Title = "Infinite Jump (Nhảy vô hạn)",
     Default = Config.InfiniteJump,
     Callback = function(state) Config.InfiniteJump = state end
 })
 
-MiscTab:CreateToggle({
+TabMisc:CreateToggle({
     Title = "Noclip Xuyên Tường",
-    Description = "Đi xuyên qua mọi vật cản địa hình khi không farm",
     Default = Config.Noclip,
     Callback = function(state) Config.Noclip = state end
 })
 
-MiscTab:CreateSection("TIỆN ÍCH CÂU CÁ (MISC)")
-
-MiscTab:CreateToggle({
-    Title = "Auto Bỏ Cần Câu Vào Tay",
-    Description = "Tự động lấy cần câu từ Balo cầm lên tay khi câu cá",
-    Default = Config.AutoEquipRod,
-    Callback = function(state) Config.AutoEquipRod = state end
+TabMisc:CreateToggle({
+    Title = "Anti-AFK (Chống bị kick 20p)",
+    Default = Config.AntiAFK,
+    Callback = function(state) Config.AntiAFK = state end
 })
 
-MiscTab:CreateToggle({
-    Title = "Auto Bán Cá Khi Đầy Rương",
-    Description = "Tự động tương tác NPC bán cá khi túi đồ đầy",
-    Default = Config.AutoSellFish,
-    Callback = function(state) Config.AutoSellFish = state end
-})
+TabMisc:CreateSection("CẤU HÌNH HUB")
 
--- ─────────────────────────────────────────────────────────────────────────
--- 🛠️ SETTING TAB
--- ─────────────────────────────────────────────────────────────────────────
-SettingTab:CreateSection("CẤU HÌNH GIAO DIỆN & HỆ THỐNG")
-
-SettingTab:CreateKeybind({
-    Title = "Phím Ẩn/Hiện Menu (Toggle UI)",
+TabMisc:CreateKeybind({
+    Title = "Phím Ẩn/Hiện Menu (Toggle Key)",
     Default = Enum.KeyCode.RightControl,
-    Callback = function(key)
-        Window:SetToggleKey(key)
-    end
+    Callback = function(key) Window:SetToggleKey(key) end
 })
 
-SettingTab:CreateDropdown({
+TabMisc:CreateDropdown({
     Title = "Màu Sắc Chủ Đạo (Theme Accent)",
     Options = { "Dodger Blue", "Emerald Green", "Crimson Red", "Amber Gold", "Purple Haze" },
     Default = "Dodger Blue",
@@ -1199,73 +1518,21 @@ SettingTab:CreateDropdown({
             ["Amber Gold"]   = Color3.fromRGB(241, 196, 15),
             ["Purple Haze"]  = Color3.fromRGB(155, 89, 182)
         }
-        if colors[choice] then
-            MhnaaUI:SetThemeColor("Accent", colors[choice])
-        end
+        if colors[choice] then MhnaaUI:SetThemeColor("Accent", colors[choice]) end
     end
 })
 
-SettingTab:CreateButton({
-    Title = "Hủy Quest Hiện Tại (Force Cancel Quest)",
-    Description = "Lập tức hủy bỏ nhiệm vụ đang nhận để giải phóng slot quest",
-    Callback = function()
-        local inputFunc = getInputFunction()
-        local qFolder = LocalPlayer.Data and LocalPlayer.Data:FindFirstChild("Quests") and LocalPlayer.Data.Quests:FindFirstChild("Main")
-        if inputFunc and qFolder and #qFolder:GetChildren() > 0 then
-            local qName = qFolder:GetChildren()[1].Name
-            inputFunc:InvokeServer("Quest", "Cancel", qName)
-            MhnaaUI:Notify({ Title = "Quest System", Content = "Đã hủy quest: " .. qName, Duration = 3 })
-        else
-            MhnaaUI:Notify({ Title = "Quest System", Content = "Hiện không có quest nào!", Duration = 3 })
-        end
-    end
-})
-
-SettingTab:CreateButton({
-    Title = "Teleport Về Đảo Chính (Legacy Island)",
-    Description = "Dịch chuyển tức thì về đảo chính an toàn",
-    Callback = function()
-        teleportToIsland("Legacy Island")
-    end
-})
-
-SettingTab:CreateButton({
+TabMisc:CreateButton({
     Title = "Đóng & Dừng Hoàn Toàn Hub",
-    Description = "Dừng tất cả tiến trình farm, bay tween và gỡ giao diện",
     Callback = function()
-        if _G.MhnaaHub_Stop then
-            _G.MhnaaHub_Stop()
-        end
+        if _G.MhnaaHub_Stop then _G.MhnaaHub_Stop() end
         Window:Destroy()
         RunService:Set3dRenderingEnabled(true)
     end
 })
 
-SettingTab:CreateSection("THÔNG TIN NGƯỜI CHƠI (LIVE STATS)")
-
-local statInfoLabel = SettingTab:CreateLabel({
-    Title = "Đang tải dữ liệu người chơi..."
-})
-
-task.spawn(function()
-    while scriptRunning do
-        pcall(function()
-            if LocalPlayer.Data then
-                local lvl = LocalPlayer.Data:FindFirstChild("Level") and LocalPlayer.Data.Level.Value or 0
-                local pts = LocalPlayer.Data:FindFirstChild("Points") and LocalPlayer.Data.Points.Value or 0
-                local curIsland = getCurrentIsland()
-                local qFolder = LocalPlayer.Data:FindFirstChild("Quests") and LocalPlayer.Data.Quests:FindFirstChild("Main")
-                local qName = (qFolder and #qFolder:GetChildren() > 0) and qFolder:GetChildren()[1].Name or "Không có"
-                
-                statInfoLabel:SetText(string.format("Lv: %s | Points: %s\nĐảo hiện tại: %s\nQuest: %s", tostring(lvl), tostring(pts), curIsland, qName))
-            end
-        end)
-        task.wait(1)
-    end
-end)
-
 MhnaaUI:Notify({
-    Title = "Mhnaa Hub [PRO]",
-    Content = "Đã khởi chạy thành công! Nhấn [RightControl] để ẩn/hiện.",
+    Title = "Mhnaa Hub [NK-SUITE]",
+    Content = "Đã nạp thành công bộ 6 Tab chuẩn NK Hub! Nhấn [RightControl] để ẩn/hiện.",
     Duration = 4
 })
