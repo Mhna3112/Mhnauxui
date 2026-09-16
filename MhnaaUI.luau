@@ -1525,6 +1525,77 @@ function MhnaaUI:CreateWindow(opt)
         end
 
         -- ═══════════════════════════════════════════════════════════════════
+        -- 🏷️ COMPONENT: STATUS LABEL (DYNAMIC TEXT CARD)
+        -- ═══════════════════════════════════════════════════════════════════
+        function TabObject:CreateLabel(lOpt)
+            lOpt = lOpt or {}
+            local Title = type(lOpt) == "string" and lOpt or (lOpt.Title or "Label")
+            local Description = type(lOpt) == "table" and (lOpt.Description or "") or ""
+
+            local Card = Instance.new("Frame")
+            Card.Name = "LabelCard"
+            Card.Size = UDim2.new(1, -6, 0, Description ~= "" and 48 or 34)
+            Card.BackgroundColor3 = MhnaaUI.CurrentTheme.CardBackground
+            Card.BorderSizePixel = 0
+            Card.Parent = Page
+
+            local CardCorner = Instance.new("UICorner")
+            CardCorner.CornerRadius = UDim.new(0, 6)
+            CardCorner.Parent = Card
+
+            local CardStroke = Instance.new("UIStroke")
+            CardStroke.Color = MhnaaUI.CurrentTheme.CardBorder
+            CardStroke.Thickness = 1
+            CardStroke.Parent = Card
+
+            local TitleLabel = Instance.new("TextLabel")
+            TitleLabel.Size = UDim2.new(1, -16, 0, 20)
+            TitleLabel.Position = UDim2.new(0, 10, 0, Description ~= "" and 4 or 7)
+            TitleLabel.BackgroundTransparency = 1
+            TitleLabel.Font = Enum.Font.GothamBold
+            TitleLabel.Text = Title
+            TitleLabel.TextColor3 = MhnaaUI.CurrentTheme.TextTitle
+            TitleLabel.TextSize = 12
+            TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+            TitleLabel.TextTruncate = Enum.TextTruncate.AtEnd
+            TitleLabel.Parent = Card
+
+            local DescLabel = nil
+            if Description ~= "" then
+                DescLabel = Instance.new("TextLabel")
+                DescLabel.Size = UDim2.new(1, -16, 0, 16)
+                DescLabel.Position = UDim2.new(0, 10, 0, 26)
+                DescLabel.BackgroundTransparency = 1
+                DescLabel.Font = Enum.Font.Gotham
+                DescLabel.Text = Description
+                DescLabel.TextColor3 = MhnaaUI.CurrentTheme.TextMuted
+                DescLabel.TextSize = 11
+                DescLabel.TextXAlignment = Enum.TextXAlignment.Left
+                DescLabel.TextTruncate = Enum.TextTruncate.AtEnd
+                DescLabel.Parent = Card
+            end
+
+            table.insert(Window.AllCards, {
+                Title = Title,
+                Desc = Description,
+                Frame = Card
+            })
+
+            return {
+                SetText = function(_, txt)
+                    TitleLabel.Text = txt
+                end,
+                SetTitle = function(_, txt)
+                    TitleLabel.Text = txt
+                end,
+                SetDesc = function(_, txt)
+                    if DescLabel then DescLabel.Text = txt end
+                end,
+                Card = Card
+            }
+        end
+
+        -- ═══════════════════════════════════════════════════════════════════
         -- 📝 COMPONENT: TEXT INPUT
         -- ═══════════════════════════════════════════════════════════════════
         function TabObject:CreateInput(iOpt)

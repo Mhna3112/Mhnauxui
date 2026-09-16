@@ -97,8 +97,8 @@ local Config = {
     AutoUseSelectedSkill = false,
     SkillDelay = 0.5,
     SelectFarmMode = "Above", -- Above, Beside, Behind, Below
-    DistanceY = 7,
-    TweenSpeed = 160,
+    TweenSpeed = 240, -- Tốc độ bay Tween theo yêu cầu (240 studs/s)
+    InstantTween = false, -- Tùy chọn di chuyển tức thì (Instant Move) trong cùng đảo
     
     -- Main Tab (Farming)
     SelectedMob = "Ghoul Investigator",
@@ -108,11 +108,6 @@ local Config = {
     AutoFarmMulti = false,
     AutoPrestige = false,
     PrestigeMode = "Khi đủ nhiệm vụ",
-    AutoFish = false,
-    FishingMode = "Fast / Instant Reel",
-    AutoEquipRod = true,
-    AutoSellFish = false,
-    AutoFishSpot = "Current Spot",
     
     -- Boss Tab
     SelectedBoss = "Ken Kaneki",
@@ -211,15 +206,20 @@ local IslandPortalIds = {
     ["Quincy Castle"]      = "QuincyCastle"
 }
 
--- Tọa độ các bến câu cá chuẩn (Fishing Spots) gần mặt nước
-local FishingSpots = {
-    ["Current Spot"]        = nil,
-    ["Starter Island Pier"] = Vector3.new(-1580, 22, 1140),
-    ["Jungle Island Coast"] = Vector3.new(-180, 18, 3050),
-    ["A-City Dock"]         = Vector3.new(1380, 19, 440),
-    ["Fishman Island"]      = Vector3.new(1150, 15170, -27800),
-    ["Tokyo Ghoul Harbor"]  = Vector3.new(3580, 19, -430)
-}
+-- Hàm xác định hòn đảo theo tọa độ không gian 3D
+local function getIslandFromPosition(pos)
+    if not pos then return "Starter Island" end
+    local closest = "Starter Island"
+    local minDist = math.huge
+    for isl, center in pairs(IslandCenters) do
+        local dist = (pos - center).Magnitude
+        if dist < minDist then
+            minDist = dist
+            closest = isl
+        end
+    end
+    return closest
+end
 
 -- Bảng thông tin Boss và NPC triệu hồi (Whisperer)
 local BossConfig = {
@@ -347,7 +347,7 @@ local function tweenTo(targetCFrame, customSpeed)
     local hum = getHumanoid()
     if not char or not root or not hum or hum.Health <= 0 then return false end
 
-    local speed = customSpeed or Config.TweenSpeed or 160
+    local speed = customSpeed or Config.TweenSpeed or 240
     local targetPos = targetCFrame.Position
     local dist = (targetPos - root.Position).Magnitude
 
@@ -356,7 +356,58 @@ local function tweenTo(targetCFrame, customSpeed)
         return true
     end
 
-    local dur = math.max(dist / speed, 0.05)
+    -- BẢO VỆ CHỐNG RUBBERBAND: Nếu mục tiêu ở quá xa (> 2500 studs - khác đảo)
+    -- Thay vì bay xuyên biển bị game kéo giật lùi, dùng Teleporter qua đảo đích trước!
+    if dist > 2500 and not isTeleportingIsland then
+        local targetIsland = getIslandFromPosition(targetPos)
+        local currentIsland = getCurrentIsland()
+        if targetIsland ~= currentIsland then
+            local successTp = teleportToIsland(targetIsland)
+            if successTp then
+                task.wait(0.5)
+                root = getRoot()
+                if root then
+                    dist = (targetPos - root.Position).Magnitude
+                end
+            end
+        end
+    end
+
+    if dist <= 4 then
+        if root then root.CFrame = targetCFrame end
+        return true
+    end
+
+    -- Chế độ di chuyển tức thì (Instant Move / Tween)
+    if Config.InstantTween then
+        local noclipConn = RunService.Stepped:Connect(function()
+            for _, p in ipairs(char:GetDescendants()) do
+                if p:IsA("BasePart") then p.CanCollide = false end
+            end
+        end)
+        hum:ChangeState(Enum.HumanoidStateType.Flying)
+        root.Velocity = Vector3.zero
+        root.RotVelocity = Vector3.zero
+
+        if dist > 120 then
+            local steps = math.clamp(math.ceil(dist / 100), 2, 6)
+            for s = 1, steps do
+                if not Config.InstantTween then break end
+                root.CFrame = root.CFrame:Lerp(targetCFrame, s / steps)
+                root.Velocity = Vector3.zero
+                task.wait(0.015)
+            end
+        end
+
+        root.CFrame = targetCFrame
+        task.wait(0.02)
+        noclipConn:Disconnect()
+        root.Velocity = Vector3.zero
+        root.RotVelocity = Vector3.zero
+        return true
+    end
+
+    local dur = math.max(dist / speed, 0.08)
 
     local noclipConn = RunService.Stepped:Connect(function()
         for _, p in ipairs(char:GetDescendants()) do
@@ -830,7 +881,9 @@ task.spawn(function()
     end
 end)
 
--- Worker: Auto Farm Boss & Triệu Hồi Boss (Whisperer System)
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 💣 WORKER: AUTO FARM BOSS & TRIỆU HỒI BOSS (TELEPORT QUA ĐẢO CHỐNG GIẬT LÙI)
+-- ═══════════════════════════════════════════════════════════════════════════
 task.spawn(function()
     while scriptRunning do
         task.wait(0.15)
@@ -845,9 +898,9 @@ task.spawn(function()
 
                 local targetBossName = Config.SelectedBoss
                 local bossInfo = BossConfig[targetBossName]
-                local targetIsland = bossInfo and bossInfo.Island or "Tokyo Ghoul"
+                local summonerIsland = bossInfo and bossInfo.Island or "Tokyo Ghoul"
 
-                -- 1. Kiểm tra Boss đã xuất hiện trong workspace chưa
+                -- 1. Quét tìm Boss trong workspace.Enemies
                 local currentBossModel = nil
                 local enemiesFolder = workspace:FindFirstChild("Enemies")
                 if enemiesFolder then
@@ -861,28 +914,29 @@ task.spawn(function()
                     end
                 end
 
-                -- 2. Nếu Boss chưa xuất hiện -> Đi triệu hồi bằng NPC Whisperer
+                -- 2. XỬ LÝ KHI CHƯA CÓ BOSS -> TRIỆU HỒI QUA NPC WHISPERER / TABLE
                 if not currentBossModel then
                     currentCombatTarget = nil
                     if Config.AutoSpawnBoss and bossInfo and bossInfo.Summoner then
-                        -- Kiểm tra đảo của NPC triệu hồi
-                        if getCurrentIsland() ~= targetIsland then
-                            teleportToIsland(targetIsland)
+                        -- Nếu NPC triệu hồi ở đảo khác -> BẮT BUỘC dùng Teleporter chuyển đảo trước!
+                        local curIsland = getCurrentIsland()
+                        if curIsland ~= summonerIsland then
+                            teleportToIsland(summonerIsland)
                             task.wait(1.5)
                             return
                         end
 
-                        -- Tìm NPC Summoner (Whisperer / Sacrifice Table / Zangetsu)
+                        -- Đã ở cùng đảo với Summoner -> Tiến lại gần triệu hồi
                         local summonerNpc = workspace.NPCs:FindFirstChild(bossInfo.Summoner)
                         if summonerNpc then
                             local distToSummoner = (summonerNpc:GetPivot().Position - root.Position).Magnitude
-                            if distToSummoner > 20 then
+                            if distToSummoner > 18 then
                                 tweenTo(summonerNpc:GetPivot() * CFrame.new(0, 0, 5), Config.TweenSpeed)
                             else
                                 local inputFunc = getInputFunction()
                                 if inputFunc then
                                     inputFunc:InvokeServer("SpawnBoss", summonerNpc, targetBossName)
-                                    task.wait(1)
+                                    task.wait(1.5)
                                 end
                             end
                         end
@@ -890,12 +944,24 @@ task.spawn(function()
                     return
                 end
 
-                -- 3. Khi Boss đã xuất hiện -> Khóa vị trí đánh
+                -- 3. XỬ LÝ KHI BOSS ĐÃ XUẤT HIỆN
+                local bossPos = currentBossModel:GetPivot().Position
+                local bossIsland = getIslandFromPosition(bossPos)
+                local curIsland = getCurrentIsland()
+
+                -- NẾU BOSS Ở ĐẢO KHÁC -> DÙNG TELEPORTER QUA ĐẢO ĐÓ TRÁNH GAME KÉO LÙI (BACK LẠI)
+                if curIsland ~= bossIsland then
+                    teleportToIsland(bossIsland)
+                    task.wait(1.5)
+                    return
+                end
+
+                -- Khi đã ở cùng đảo với Boss -> Khóa góc đánh và chiến đấu
                 currentCombatTarget = currentBossModel
                 local targetCF = calculateTargetCFrame(currentBossModel, Config.SelectFarmMode, Config.DistanceY)
                 if targetCF then
                     local dist = (targetCF.Position - root.Position).Magnitude
-                    if dist > 12 then
+                    if dist > 10 then
                         tweenTo(targetCF, Config.TweenSpeed)
                     else
                         root.Velocity = Vector3.zero
@@ -909,189 +975,11 @@ task.spawn(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- 🎣 WORKER: HỆ THỐNG AUTO FISHING TOÀN DIỆN (FAST REEL & AUTO MINIGAME SOLVER)
--- ═══════════════════════════════════════════════════════════════════════════
-local lastCastTime = 0
-local lastSellTime = 0
-
--- Lắng nghe trực tiếp gói tin phản hồi cắn câu từ server (RE_FishingMinigame)
-task.spawn(function()
-    local re = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("RE_FishingMinigame")
-    if re then
-        re.OnClientEvent:Connect(function(action, ...)
-            if not Config.AutoFish or not scriptRunning then return end
-            if action == "Bite" or action == "Shake" or action == "Splash1" or action == "Splash2" then
-                if Config.FishingMode == "Fast / Instant Reel" then
-                    task.wait(0.08)
-                    pcall(function()
-                        re:FireServer("Catch")
-                    end)
-                end
-            end
-        end)
-    end
-end)
-
-task.spawn(function()
-    while scriptRunning do
-        task.wait(0.06)
-        if Config.AutoFish and not isTeleportingIsland then
-            pcall(function()
-                local char = getCharacter()
-                local root = getRoot()
-                local hum = getHumanoid()
-                if not char or not root or not hum or hum.Health <= 0 then return end
-
-                -- 1. Dịch chuyển tới bãi câu (nếu chọn spot cố định)
-                if Config.AutoFishSpot and Config.AutoFishSpot ~= "Current Spot" then
-                    local targetSpot = FishingSpots[Config.AutoFishSpot]
-                    if targetSpot then
-                        local dist = (root.Position - targetSpot).Magnitude
-                        if dist > 15 then
-                            tweenTo(CFrame.new(targetSpot), Config.TweenSpeed)
-                            task.wait(0.3)
-                        end
-                    end
-                end
-
-                -- 2. Tự động cầm Cần câu (Fishing Rod)
-                local function findRod()
-                    for _, item in ipairs(char:GetChildren()) do
-                        if item:IsA("Tool") and (string.find(string.lower(item.Name), "rod") or string.find(string.lower(item.Name), "cần")) then
-                            return item
-                        end
-                    end
-                    local bp = LocalPlayer:FindFirstChildOfClass("Backpack")
-                    if bp then
-                        for _, item in ipairs(bp:GetChildren()) do
-                            if item:IsA("Tool") and (string.find(string.lower(item.Name), "rod") or string.find(string.lower(item.Name), "cần")) then
-                                return item
-                            end
-                        end
-                    end
-                    return nil
-                end
-
-                local rod = findRod()
-                if not rod then return end
-
-                if Config.AutoEquipRod and rod.Parent ~= char then
-                    hum:EquipTool(rod)
-                    task.wait(0.2)
-                end
-
-                -- 3. Đồng bộ trạng thái AutoFishing với Game Settings
-                local inputFunc = getInputFunction()
-                if inputFunc then
-                    pcall(function()
-                        inputFunc:InvokeServer("Settings", "AutoFishing", true)
-                    end)
-                end
-
-                -- 4. Nhận diện trạng thái Minigame
-                local fishGui = LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("FishMinigame")
-                local frame = fishGui and fishGui:FindFirstChild("Frame")
-                local m1 = frame and frame:FindFirstChild("Minigame1")
-                local m2 = frame and frame:FindFirstChild("Minigame2")
-
-                local isM1Active = m1 and m1.Visible
-                local isM2Active = m2 and m2.Visible
-
-                -- XỬ LÝ MINIGAME 1: Nút CLICK
-                if isM1Active then
-                    local clickBtn = m1:FindFirstChild("CLICK")
-                    if clickBtn and clickBtn.Visible then
-                        pcall(function()
-                            for _, conn in pairs(getconnections(clickBtn.MouseButton1Click)) do
-                                conn:Fire()
-                            end
-                        end)
-                        pcall(function()
-                            for _, conn in pairs(getconnections(clickBtn.Activated)) do
-                                conn:Fire()
-                            end
-                        end)
-                        if firesignal then
-                            pcall(function() firesignal(clickBtn.MouseButton1Click) end)
-                            pcall(function() firesignal(clickBtn.Activated) end)
-                        end
-                    end
-
-                    if Config.FishingMode == "Fast / Instant Reel" then
-                        local re = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("RE_FishingMinigame")
-                        if re then
-                            pcall(function() re:FireServer("Catch") end)
-                        end
-                    end
-                    task.wait(0.05)
-                    return
-                end
-
-                -- XỬ LÝ MINIGAME 2: Thanh cân bằng HoldBar & Con cá (Fish)
-                if isM2Active then
-                    local bar = m2:FindFirstChild("Bar", true)
-                    local holdBar = bar and bar:FindFirstChild("HoldBar")
-                    local fish = bar and bar:FindFirstChild("Fish", true)
-                    local fishBar = m2:FindFirstChild("FishBar", true)
-                    local progression = fishBar and fishBar:FindFirstChild("Progression")
-
-                    -- Tự động bám đuôi con cá vào giữa HoldBar
-                    if holdBar and fish then
-                        pcall(function()
-                            holdBar.Position = UDim2.new(
-                                holdBar.Position.X.Scale,
-                                holdBar.Position.X.Offset,
-                                fish.Position.Y.Scale,
-                                fish.Position.Y.Offset
-                            )
-                        end)
-                    end
-
-                    -- Chế độ Fast / Instant Reel: Tăng tối đa thanh tiến trình và chốt kéo cá
-                    if Config.FishingMode == "Fast / Instant Reel" then
-                        if progression then
-                            pcall(function()
-                                progression.Size = UDim2.new(1, 0, progression.Size.Y.Scale, progression.Size.Y.Offset)
-                            end)
-                        end
-                        local re = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("RE_FishingMinigame")
-                        if re then
-                            pcall(function() re:FireServer("Catch") end)
-                        end
-                    end
-                    task.wait(0.05)
-                    return
-                end
-
-                -- 5. Khi không có Minigame: Quăng cần (Cast)
-                local now = os.clock()
-                if (now - lastCastTime) > 2.0 then
-                    lastCastTime = now
-                    pcall(function()
-                        rod:Activate()
-                        task.wait(0.4)
-                        rod:Activate()
-                    end)
-                end
-
-                -- 6. Tự động bán cá (Auto Sell Fish) định kỳ mỗi 25 giây
-                if Config.AutoSellFish and (now - lastSellTime) > 25 then
-                    lastSellTime = now
-                    if inputFunc then
-                        pcall(function()
-                            inputFunc:InvokeServer("Merchant", "SellFish")
-                            inputFunc:InvokeServer("Fish", "SellAll")
-                        end)
-                    end
-                end
-            end)
-        end
-    end
-end)
-
--- ═══════════════════════════════════════════════════════════════════════════
 -- 🌟 THUẬT TOÁN TỰ ĐỘNG LÀM NHIỆM VỤ PRESTIGE & FARM BOSS (SMART PRESTIGE)
 -- ═══════════════════════════════════════════════════════════════════════════
+local lastPrestigeKillCounts = {}
+_G.PrestigeLiveSummary = "Đang kiểm tra yêu cầu Prestige..."
+
 local function getPrestigeRequirements()
     local pGui = LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("Prestige")
     local reqHolder = pGui and pGui:FindFirstChild("RequirementsHolder", true)
@@ -1139,10 +1027,40 @@ local function findBossForRequirement(reqName)
     return nil, nil
 end
 
--- Worker: Smart Auto Prestige (Đọc yêu cầu, tự bay đi spawn Boss, farm boss, cày cấp & chuyển sinh)
+-- Worker: Smart Auto Prestige (Theo dõi số lượng kill, tự dùng Teleporter sang đảo Boss)
 task.spawn(function()
     while scriptRunning do
-        task.wait(0.25)
+        task.wait(0.2)
+        pcall(function()
+            local reqs = getPrestigeRequirements()
+            if #reqs > 0 then
+                local summaryItems = {}
+                for _, r in ipairs(reqs) do
+                    if r.cur and r.max then
+                        -- Kiểm tra nếu vừa diệt thêm 1 con -> Báo Notify cập nhật số lượng ngay!
+                        local prevCount = lastPrestigeKillCounts[r.name]
+                        if prevCount ~= nil and r.cur > prevCount then
+                            local added = r.cur - prevCount
+                            if MhnaaUI and MhnaaUI.Notify then
+                                MhnaaUI:Notify({
+                                    Title = "🎉 PRESTIGE TIẾN ĐỘ",
+                                    Content = string.format("Đã hạ gục thêm %d %s! Đạt (%d/%d) - Còn thiếu %d con!", added, r.name, r.cur, r.max, r.max - r.cur),
+                                    Duration = 4
+                                })
+                            end
+                        end
+                        lastPrestigeKillCounts[r.name] = r.cur
+
+                        local icon = r.done and "✅" or "⚔️"
+                        table.insert(summaryItems, string.format("%s %s (%d/%d)", icon, r.name, r.cur, r.max))
+                    else
+                        table.insert(summaryItems, (r.done and "✅ " or "⏳ ") .. r.name)
+                    end
+                end
+                _G.PrestigeLiveSummary = table.concat(summaryItems, " | ")
+            end
+        end)
+
         if Config.AutoPrestige and not isTeleportingIsland then
             pcall(function()
                 local char = getCharacter()
@@ -1197,7 +1115,7 @@ task.spawn(function()
                         end
                     end
 
-                    -- Chưa có Boss -> Triệu hồi qua Whisperer / Sacrifice Table
+                    -- A. Chưa có Boss -> Triệu hồi qua Summoner (Sacrifice Table ở Grave Island)
                     if not activeBoss then
                         currentCombatTarget = nil
                         local tIsland = targetBossInfo.Island or "Grave Island"
@@ -1211,7 +1129,7 @@ task.spawn(function()
                         if summoner then
                             local sPos = summoner:GetPivot().Position
                             local distToS = (sPos - root.Position).Magnitude
-                            if distToS > 20 then
+                            if distToS > 18 then
                                 tweenTo(summoner:GetPivot() * CFrame.new(0, 0, 5), Config.TweenSpeed)
                             else
                                 if inputFunc then
@@ -1223,12 +1141,22 @@ task.spawn(function()
                         return
                     end
 
-                    -- Boss đã xuất hiện -> Khóa vị trí chiến đấu và tấn công
+                    -- B. Boss đã xuất hiện -> Kiểm tra đảo của Boss!
+                    local bossPos = activeBoss:GetPivot().Position
+                    local bossIsland = getIslandFromPosition(bossPos)
+                    if getCurrentIsland() ~= bossIsland then
+                        -- NẾU BOSS Ở ĐẢO KHÁC -> QUA ĐẢO BẰNG TELEPORTER
+                        teleportToIsland(bossIsland)
+                        task.wait(1.5)
+                        return
+                    end
+
+                    -- Boss cùng đảo -> Khóa vị trí chiến đấu và tấn công
                     currentCombatTarget = activeBoss
                     local targetCF = calculateTargetCFrame(activeBoss, Config.SelectFarmMode, Config.DistanceY)
                     if targetCF then
                         local dist = (targetCF.Position - root.Position).Magnitude
-                        if dist > 12 then
+                        if dist > 10 then
                             tweenTo(targetCF, Config.TweenSpeed)
                         else
                             root.Velocity = Vector3.zero
@@ -1452,6 +1380,15 @@ TabHome:CreateSlider({
     Callback = function(val) Config.TweenSpeed = val end
 })
 
+TabHome:CreateToggle({
+    Title = "Instant Tween (Di chuyển tức thì)",
+    Description = "Dịch chuyển tức thì đến mục tiêu khi Move thay vì bay",
+    Default = Config.InstantTween,
+    Callback = function(state)
+        Config.InstantTween = state
+    end
+})
+
 -- ─────────────────────────────────────────────────────────────────────────
 -- ⚔️ TAB 2: MAIN
 -- ─────────────────────────────────────────────────────────────────────────
@@ -1520,21 +1457,11 @@ local prestigeStatusLabel = TabMain:CreateLabel({
 task.spawn(function()
     while scriptRunning do
         pcall(function()
-            local reqs = getPrestigeRequirements()
-            local strList = {}
-            for _, r in ipairs(reqs) do
-                if not r.done then
-                    local shortName = r.name:gsub("Kill %d+ ", ""):gsub("Reach Level ", "Lvl ")
-                    table.insert(strList, string.format("%s: %d/%d", shortName, r.cur or 0, r.max or 0))
-                end
-            end
-            if #strList == 0 then
-                prestigeStatusLabel:SetText("Prestige: Đã đủ toàn bộ điều kiện! Sẵn sàng chuyển sinh.")
-            else
-                prestigeStatusLabel:SetText("Cần làm: " .. table.concat(strList, " | "))
+            if _G.PrestigeLiveSummary and prestigeStatusLabel and prestigeStatusLabel.SetText then
+                prestigeStatusLabel:SetText(_G.PrestigeLiveSummary)
             end
         end)
-        task.wait(2)
+        task.wait(1)
     end
 end)
 
@@ -1574,56 +1501,6 @@ TabMain:CreateButton({
         end
         if not summonedAny then
             MhnaaUI:Notify({ Title = "Prestige Boss", Content = "Không có Boss nào đang cần triệu hồi cho Prestige!", Duration = 3 })
-        end
-    end
-})
-
-TabMain:CreateSection("AUTO CÂU CÁ (FISHING)")
-
-TabMain:CreateToggle({
-    Title = "Auto Câu Cá",
-    Description = "Tự động cầm cần, quăng câu, giải minigame và giật cá",
-    Default = Config.AutoFish,
-    Callback = function(state) Config.AutoFish = state end
-})
-
-TabMain:CreateDropdown({
-    Title = "Chế độ kéo cần (Reel Mode)",
-    Options = { "Fast / Instant Reel", "Legit / Normal" },
-    Default = Config.FishingMode,
-    Callback = function(val) Config.FishingMode = val end
-})
-
-local fishingSpotNames = { "Current Spot", "Starter Island Pier", "Fishman Island", "Tokyo Ghoul Harbor", "Jungle Island Coast", "A-City Dock" }
-TabMain:CreateDropdown({
-    Title = "Chọn bãi câu cá (Fishing Spot)",
-    Options = fishingSpotNames,
-    Default = Config.AutoFishSpot or "Current Spot",
-    Callback = function(val) Config.AutoFishSpot = val end
-})
-
-TabMain:CreateToggle({
-    Title = "Auto Trang Bị Cần Câu (Equip Rod)",
-    Description = "Tự lấy cần câu trong balo ra tay khi bắt đầu câu",
-    Default = Config.AutoEquipRod,
-    Callback = function(state) Config.AutoEquipRod = state end
-})
-
-TabMain:CreateToggle({
-    Title = "Tự Động Bán Cá (Auto Sell Fish)",
-    Description = "Tự bán sạch cá trong kho định kỳ mỗi 25s",
-    Default = Config.AutoSellFish,
-    Callback = function(state) Config.AutoSellFish = state end
-})
-
-TabMain:CreateButton({
-    Title = "Bán toàn bộ cá ngay bây giờ",
-    Callback = function()
-        local inputFunc = getInputFunction()
-        if inputFunc then
-            inputFunc:InvokeServer("Merchant", "SellFish")
-            inputFunc:InvokeServer("Fish", "SellAll")
-            MhnaaUI:Notify({ Title = "Fishing", Content = "Đã gửi yêu cầu bán toàn bộ cá!", Duration = 3 })
         end
     end
 })
