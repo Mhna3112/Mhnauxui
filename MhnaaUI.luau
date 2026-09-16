@@ -733,12 +733,13 @@ function MhnaaUI:CreateWindow(opt)
             Page = Page,
             Button = TabBtn,
             Name = TabName,
-            Order = #Window.TabButtons
+            Order = #Window.TabButtons,
+            Select = activateTab
         }
         Window.Tabs[TabName] = TabObject
 
-        -- Set first tab active by default
-        if #Window.TabButtons == 1 then
+        -- Set first real tab active by default
+        if TabName ~= "UI Setting" and (Window.ActiveTab == nil or Window.ActiveTab == "UI Setting") then
             activateTab()
         end
 
