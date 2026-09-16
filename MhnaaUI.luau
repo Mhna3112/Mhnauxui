@@ -41,6 +41,12 @@ local MhnaaUI = {
     }
 }
 
+function MhnaaUI:SetThemeColor(key, color)
+    if self.CurrentTheme[key] then
+        self.CurrentTheme[key] = color
+    end
+end
+
 -- Target parent container safe for all executors
 local function getSafeGuiParent()
     local success, parent = pcall(function()
@@ -596,7 +602,13 @@ function MhnaaUI:CreateWindow(opt)
         TabButtons = {},
         ActiveTab = nil,
         AllCards = {}, -- For global search
-        Config = {}
+        Config = {},
+        Destroy = function(self)
+            ScreenGui:Destroy()
+        end,
+        SetToggleKey = function(self, newKey)
+            ToggleKey = newKey
+        end
     }
 
     -- GLOBAL SEARCH FILTERING
@@ -852,16 +864,189 @@ function MhnaaUI:CreateWindow(opt)
         end
 
         -- ═══════════════════════════════════════════════════════════════════
-        -- 🔽 COMPONENT: DROPDOWN COMBOBOX (Exact match to screenshot)
+        -- 🏷️ COMPONENT: LABEL / INFO CARD
+        -- ═══════════════════════════════════════════════════════════════════
+        function TabObject:CreateLabel(lOpt)
+            lOpt = lOpt or {}
+            local Title = type(lOpt) == "string" and lOpt or (lOpt.Title or lOpt.Text or "Label")
+            local Description = type(lOpt) == "table" and (lOpt.Description or "") or ""
+            
+            local hasDesc = Description ~= ""
+            local cardHeight = hasDesc and 54 or 42
+
+            local Card = Instance.new("Frame")
+            Card.Name = Title .. "LabelCard"
+            Card.Size = UDim2.new(1, -6, 0, cardHeight)
+            Card.BackgroundColor3 = MhnaaUI.CurrentTheme.CardBackground
+            Card.BorderSizePixel = 0
+            Card.Parent = Page
+
+            local CardCorner = Instance.new("UICorner")
+            CardCorner.CornerRadius = UDim.new(0, 6)
+            CardCorner.Parent = Card
+
+            local CardStroke = Instance.new("UIStroke")
+            CardStroke.Color = MhnaaUI.CurrentTheme.CardBorder
+            CardStroke.Thickness = 1
+            CardStroke.Parent = Card
+
+            local TitleLabel = Instance.new("TextLabel")
+            TitleLabel.Size = UDim2.new(1, -24, 0, hasDesc and 20 or 32)
+            TitleLabel.Position = UDim2.new(0, 12, 0, hasDesc and 6 or 5)
+            TitleLabel.BackgroundTransparency = 1
+            TitleLabel.Font = Enum.Font.GothamMedium
+            TitleLabel.Text = Title
+            TitleLabel.TextColor3 = MhnaaUI.CurrentTheme.TextTitle
+            TitleLabel.TextSize = 12
+            TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+            TitleLabel.TextWrapped = true
+            TitleLabel.Parent = Card
+
+            if hasDesc then
+                local DescLabel = Instance.new("TextLabel")
+                DescLabel.Size = UDim2.new(1, -24, 0, 18)
+                DescLabel.Position = UDim2.new(0, 12, 0, 28)
+                DescLabel.BackgroundTransparency = 1
+                DescLabel.Font = Enum.Font.Gotham
+                DescLabel.Text = Description
+                DescLabel.TextColor3 = MhnaaUI.CurrentTheme.TextMuted
+                DescLabel.TextSize = 11
+                DescLabel.TextXAlignment = Enum.TextXAlignment.Left
+                DescLabel.Parent = Card
+            end
+
+            table.insert(Window.AllCards, {
+                Title = Title,
+                Desc = Description,
+                Frame = Card
+            })
+
+            return {
+                SetText = function(_, txt)
+                    TitleLabel.Text = txt
+                end,
+                Set = function(_, txt)
+                    TitleLabel.Text = txt
+                end,
+                Card = Card
+            }
+        end
+
+        -- ═══════════════════════════════════════════════════════════════════
+        -- ⌨️ COMPONENT: KEYBIND
+        -- ═══════════════════════════════════════════════════════════════════
+        function TabObject:CreateKeybind(kOpt)
+            kOpt = kOpt or {}
+            local Title = kOpt.Title or "Keybind"
+            local Description = kOpt.Description or ""
+            local Default = kOpt.Default or Enum.KeyCode.RightControl
+            local Callback = kOpt.Callback or function() end
+
+            local currentKey = Default
+            local listening = false
+
+            local Card = Instance.new("Frame")
+            Card.Name = Title .. "KeybindCard"
+            Card.Size = UDim2.new(1, -6, 0, 42)
+            Card.BackgroundColor3 = MhnaaUI.CurrentTheme.CardBackground
+            Card.BorderSizePixel = 0
+            Card.Parent = Page
+
+            local CardCorner = Instance.new("UICorner")
+            CardCorner.CornerRadius = UDim.new(0, 6)
+            CardCorner.Parent = Card
+
+            local CardStroke = Instance.new("UIStroke")
+            CardStroke.Color = MhnaaUI.CurrentTheme.CardBorder
+            CardStroke.Thickness = 1
+            CardStroke.Parent = Card
+
+            local TitleLabel = Instance.new("TextLabel")
+            TitleLabel.Size = UDim2.new(1, -120, 1, 0)
+            TitleLabel.Position = UDim2.new(0, 12, 0, 0)
+            TitleLabel.BackgroundTransparency = 1
+            TitleLabel.Font = Enum.Font.GothamBold
+            TitleLabel.Text = Title
+            TitleLabel.TextColor3 = MhnaaUI.CurrentTheme.TextTitle
+            TitleLabel.TextSize = 13
+            TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+            TitleLabel.Parent = Card
+
+            local KeyBtn = Instance.new("TextButton")
+            KeyBtn.Size = UDim2.new(0, 100, 0, 28)
+            KeyBtn.Position = UDim2.new(1, -112, 0.5, -14)
+            KeyBtn.BackgroundColor3 = MhnaaUI.CurrentTheme.InputBackground
+            KeyBtn.BorderSizePixel = 0
+            KeyBtn.Font = Enum.Font.GothamBold
+            KeyBtn.Text = currentKey.Name or tostring(currentKey)
+            KeyBtn.TextColor3 = MhnaaUI.CurrentTheme.Accent
+            KeyBtn.TextSize = 11
+            KeyBtn.Parent = Card
+
+            local KeyCorner = Instance.new("UICorner")
+            KeyCorner.CornerRadius = UDim.new(0, 5)
+            KeyCorner.Parent = KeyBtn
+
+            local KeyStroke = Instance.new("UIStroke")
+            KeyStroke.Color = MhnaaUI.CurrentTheme.CardBorder
+            KeyStroke.Thickness = 1
+            KeyStroke.Parent = KeyBtn
+
+            KeyBtn.MouseButton1Click:Connect(function()
+                listening = true
+                KeyBtn.Text = "..."
+                KeyBtn.TextColor3 = Color3.fromRGB(245, 166, 35)
+            end)
+
+            UserInputService.InputBegan:Connect(function(input, gpe)
+                if listening and not gpe and input.UserInputType == Enum.UserInputType.Keyboard then
+                    currentKey = input.KeyCode
+                    listening = false
+                    KeyBtn.Text = currentKey.Name
+                    KeyBtn.TextColor3 = MhnaaUI.CurrentTheme.Accent
+                    pcall(Callback, currentKey)
+                end
+            end)
+
+            table.insert(Window.AllCards, {
+                Title = Title,
+                Desc = Description,
+                Frame = Card
+            })
+
+            return {
+                Set = function(_, k)
+                    currentKey = k
+                    KeyBtn.Text = currentKey.Name
+                    pcall(Callback, currentKey)
+                end,
+                Get = function() return currentKey end,
+                Card = Card
+            }
+        end
+
+        -- ═══════════════════════════════════════════════════════════════════
+        -- 🔽 COMPONENT: DROPDOWN COMBOBOX (Supports Single & Multi-Select)
         -- ═══════════════════════════════════════════════════════════════════
         function TabObject:CreateDropdown(dOpt)
             dOpt = dOpt or {}
             local Title = dOpt.Title or "Dropdown"
             local Options = dOpt.Options or {}
-            local Default = dOpt.Default or Options[1] or "Select..."
+            local isMulti = dOpt.MultiSelect or false
+            local Default = dOpt.Default or (isMulti and {} or (Options[1] or "Select..."))
             local Callback = dOpt.Callback or function() end
 
             local currentVal = Default
+            local selectedMap = {}
+            if isMulti then
+                if type(Default) == "table" then
+                    for _, v in ipairs(Default) do selectedMap[v] = true end
+                    for k, v in pairs(Default) do if v == true then selectedMap[k] = true end end
+                elseif type(Default) == "string" then
+                    selectedMap[Default] = true
+                end
+            end
+
             local isExpanded = false
 
             local DropFrame = Instance.new("Frame")
@@ -882,7 +1067,6 @@ function MhnaaUI:CreateWindow(opt)
             TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
             TitleLabel.Parent = DropFrame
 
-            -- Main Dropdown Button
             local SelectorBtn = Instance.new("TextButton")
             SelectorBtn.Name = "SelectorBtn"
             SelectorBtn.Size = UDim2.new(1, 0, 0, 38)
@@ -902,12 +1086,30 @@ function MhnaaUI:CreateWindow(opt)
             SelStroke.Thickness = 1
             SelStroke.Parent = SelectorBtn
 
+            local function getDisplaySummary()
+                if isMulti then
+                    local count = 0
+                    local chosen = {}
+                    for opt, state in pairs(selectedMap) do
+                        if state then
+                            count = count + 1
+                            table.insert(chosen, tostring(opt))
+                        end
+                    end
+                    if count == 0 then return Title .. ": (None)" end
+                    if count <= 2 then return Title .. ": " .. table.concat(chosen, ", ") end
+                    return Title .. ": (" .. count .. " selected)"
+                else
+                    return Title .. ": " .. tostring(currentVal)
+                end
+            end
+
             local SelectedText = Instance.new("TextLabel")
             SelectedText.Size = UDim2.new(1, -36, 1, 0)
             SelectedText.Position = UDim2.new(0, 14, 0, 0)
             SelectedText.BackgroundTransparency = 1
             SelectedText.Font = Enum.Font.Gotham
-            SelectedText.Text = Title .. ": " .. tostring(currentVal)
+            SelectedText.Text = getDisplaySummary()
             SelectedText.TextColor3 = MhnaaUI.CurrentTheme.TextTitle
             SelectedText.TextSize = 12
             SelectedText.TextXAlignment = Enum.TextXAlignment.Left
@@ -923,7 +1125,6 @@ function MhnaaUI:CreateWindow(opt)
             Chevron.TextSize = 13
             Chevron.Parent = SelectorBtn
 
-            -- Expandable Option List Container
             local OptionList = Instance.new("Frame")
             OptionList.Name = "OptionList"
             OptionList.Size = UDim2.new(1, 0, 0, 0)
@@ -967,14 +1168,15 @@ function MhnaaUI:CreateWindow(opt)
                 end
 
                 for _, item in ipairs(Options) do
+                    local isSelected = isMulti and (selectedMap[item] == true) or (item == currentVal)
                     local itemBtn = Instance.new("TextButton")
                     itemBtn.Size = UDim2.new(1, 0, 0, 28)
-                    itemBtn.BackgroundColor3 = (item == currentVal) and Color3.fromRGB(38, 38, 45) or Color3.fromRGB(0, 0, 0)
-                    itemBtn.BackgroundTransparency = (item == currentVal) and 0 or 1
+                    itemBtn.BackgroundColor3 = isSelected and Color3.fromRGB(38, 38, 45) or Color3.fromRGB(0, 0, 0)
+                    itemBtn.BackgroundTransparency = isSelected and 0 or 1
                     itemBtn.BorderSizePixel = 0
                     itemBtn.Font = Enum.Font.Gotham
-                    itemBtn.Text = "   " .. tostring(item)
-                    itemBtn.TextColor3 = (item == currentVal) and MhnaaUI.CurrentTheme.Accent or MhnaaUI.CurrentTheme.TextTitle
+                    itemBtn.Text = "   " .. (isMulti and (isSelected and "☑ " or "☐ ") or "") .. tostring(item)
+                    itemBtn.TextColor3 = isSelected and MhnaaUI.CurrentTheme.Accent or MhnaaUI.CurrentTheme.TextTitle
                     itemBtn.TextSize = 12
                     itemBtn.TextXAlignment = Enum.TextXAlignment.Left
                     itemBtn.ZIndex = 22
@@ -984,28 +1186,24 @@ function MhnaaUI:CreateWindow(opt)
                     itemCorner.CornerRadius = UDim.new(0, 4)
                     itemCorner.Parent = itemBtn
 
-                    itemBtn.MouseEnter:Connect(function()
-                        if item ~= currentVal then
-                            tween(itemBtn, TweenInfo.new(0.15), {BackgroundTransparency = 0.5, BackgroundColor3 = Color3.fromRGB(45, 45, 52)})
-                        end
-                    end)
-                    itemBtn.MouseLeave:Connect(function()
-                        if item ~= currentVal then
-                            tween(itemBtn, TweenInfo.new(0.15), {BackgroundTransparency = 1})
-                        end
-                    end)
-
                     itemBtn.MouseButton1Click:Connect(function()
-                        currentVal = item
-                        SelectedText.Text = Title .. ": " .. tostring(currentVal)
-                        isExpanded = false
-                        tween(Chevron, TweenInfo.new(0.2), {Rotation = 0})
-                        tween(OptionList, TweenInfo.new(0.2), {Size = UDim2.new(1, 0, 0, 0)}).Completed:Connect(function()
-                            OptionList.Visible = false
-                            DropFrame.Size = UDim2.new(1, -6, 0, 68)
-                        end)
-                        renderOptions()
-                        pcall(Callback, currentVal)
+                        if isMulti then
+                            selectedMap[item] = not selectedMap[item]
+                            SelectedText.Text = getDisplaySummary()
+                            renderOptions()
+                            pcall(Callback, selectedMap)
+                        else
+                            currentVal = item
+                            SelectedText.Text = Title .. ": " .. tostring(currentVal)
+                            isExpanded = false
+                            tween(Chevron, TweenInfo.new(0.2), {Rotation = 0})
+                            tween(OptionList, TweenInfo.new(0.2), {Size = UDim2.new(1, 0, 0, 0)}).Completed:Connect(function()
+                                OptionList.Visible = false
+                                DropFrame.Size = UDim2.new(1, -6, 0, 68)
+                            end)
+                            renderOptions()
+                            pcall(Callback, currentVal)
+                        end
                     end)
                 end
             end
@@ -1016,7 +1214,7 @@ function MhnaaUI:CreateWindow(opt)
                 isExpanded = not isExpanded
                 if isExpanded then
                     OptionList.Visible = true
-                    local targetH = math.min(#Options * 31 + 10, 140)
+                    local targetH = math.min(#Options * 31 + 10, 160)
                     DropFrame.Size = UDim2.new(1, -6, 0, 68 + targetH + 6)
                     tween(Chevron, TweenInfo.new(0.2), {Rotation = 180})
                     tween(OptionList, TweenInfo.new(0.2), {Size = UDim2.new(1, 0, 0, targetH)})
@@ -1039,16 +1237,27 @@ function MhnaaUI:CreateWindow(opt)
 
             return {
                 Set = function(_, val)
-                    currentVal = val
-                    SelectedText.Text = Title .. ": " .. tostring(currentVal)
-                    renderOptions()
-                    pcall(Callback, currentVal)
+                    if isMulti then
+                        selectedMap = {}
+                        if type(val) == "table" then
+                            for _, v in ipairs(val) do selectedMap[v] = true end
+                            for k, v in pairs(val) do if v == true then selectedMap[k] = true end end
+                        end
+                        SelectedText.Text = getDisplaySummary()
+                        renderOptions()
+                        pcall(Callback, selectedMap)
+                    else
+                        currentVal = val
+                        SelectedText.Text = Title .. ": " .. tostring(currentVal)
+                        renderOptions()
+                        pcall(Callback, currentVal)
+                    end
                 end,
                 SetOptions = function(_, newOptions)
                     Options = newOptions
                     renderOptions()
                 end,
-                GetValue = function() return currentVal end,
+                GetValue = function() return isMulti and selectedMap or currentVal end,
                 Frame = DropFrame
             }
         end
