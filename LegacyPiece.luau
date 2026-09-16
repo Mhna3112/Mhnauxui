@@ -375,31 +375,130 @@ local function tweenTo(targetCFrame, customSpeed)
     return true
 end
 
+-- Danh sách tọa độ Teleporter cố định của các Đảo để fallback nếu chưa kịp load model
+local KnownTeleporterPositions = {
+    ["Starter Island"]     = Vector3.new(-1643.9, 33.2, 1099.4),
+    ["Jungle Island"]      = Vector3.new(-208.1, 25.4, 3108.1),
+    ["Ice Island"]         = Vector3.new(-2085.7, 17.6, 309.6),
+    ["A-City"]             = Vector3.new(1313.0, 25.7, 496.6),
+    ["Jujutsu Academy"]    = Vector3.new(-757.1, 17.1, -1204.3),
+    ["Hollow Land"]        = Vector3.new(415.7, 36.0, -3093.3),
+    ["Slayer Mansion"]     = Vector3.new(2912.4, 40.1, -3143.5),
+    ["Tokyo Ghoul"]        = Vector3.new(3613.3, 22.1, -490.7),
+    ["Ruin City"]          = Vector3.new(10002.6, 1002.9, -7394.7),
+    ["7th Company Island"] = Vector3.new(2672.6, 24.0, -5134.8),
+    ["Fishman Island"]     = Vector3.new(1137.3, 15172.0, -27833.6),
+    ["Legacy Island"]      = Vector3.new(-129.6, 17.2, 24.8),
+    ["Grave Island"]       = Vector3.new(-2582.9, 29.8, 3138.9),
+    ["Quincy Castle"]      = Vector3.new(-353.8, 22.8, 5153.9)
+}
+
+local function getNearestTeleporter()
+    local root = getRoot()
+    if not root then return nil, math.huge end
+    local closest = nil
+    local minDist = math.huge
+    if workspace:FindFirstChild("NPCs") then
+        for _, obj in ipairs(workspace.NPCs:GetChildren()) do
+            if obj.Name == "Teleporter" and obj:IsA("Model") then
+                local pivot = obj:GetPivot()
+                local dist = (root.Position - pivot.Position).Magnitude
+                if dist < minDist then
+                    minDist = dist
+                    closest = obj
+                end
+            end
+        end
+    end
+    return closest, minDist
+end
+
+local isTeleportingIsland = false
+
 local function teleportToIsland(targetIsland)
-    stopCurrentTween()
     local current = getCurrentIsland()
     if current == targetIsland then return true end
+    if isTeleportingIsland then return false end
+    isTeleportingIsland = true
 
-    local tpUI = getTeleportUI()
-    if tpUI and tpUI.selectIsland and tpUI.teleport then
-        pcall(function()
-            tpUI:selectIsland(targetIsland)
-            task.wait(0.2)
-            tpUI:teleport()
-        end)
-        task.wait(1.5)
-        if getCurrentIsland() == targetIsland then return true end
+    stopCurrentTween()
+
+    local root = getRoot()
+    if not root then
+        isTeleportingIsland = false
+        return false
     end
 
     local portalId = IslandPortalIds[targetIsland]
-    local tpPortalRemote = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("TeleportToPortal")
-    if tpPortalRemote and portalId then
-        pcall(function() tpPortalRemote:FireServer(portalId) end)
-        task.wait(1.2)
-        if getCurrentIsland() == targetIsland then return true end
+    if not portalId then
+        warn("[Teleport] Không tìm thấy portalId cho đảo: " .. tostring(targetIsland))
+        isTeleportingIsland = false
+        return false
     end
 
-    return getCurrentIsland() == targetIsland
+    -- 1. Tìm Cổng Dịch Chuyển (Teleporter) gần nhất trên đảo hiện tại
+    local tpModel, distToTp = getNearestTeleporter()
+    local tpTargetCF = nil
+
+    if tpModel then
+        tpTargetCF = tpModel:GetPivot() * CFrame.new(0, 3, 0)
+    else
+        local fallbackPos = KnownTeleporterPositions[current] or KnownTeleporterPositions["Starter Island"]
+        tpTargetCF = CFrame.new(fallbackPos + Vector3.new(0, 3, 0))
+        distToTp = (root.Position - tpTargetCF.Position).Magnitude
+    end
+
+    -- 2. Bắt buộc di chuyển tới sát Teleporter (Game yêu cầu đứng cạnh Teleporter mới cho phép Fast Travel)
+    if distToTp and distToTp > 10 then
+        if MhnaaUI and MhnaaUI.Notify then
+            MhnaaUI:Notify({
+                Title = "Teleport",
+                Content = "Đang di chuyển lại Cổng Teleporter của đảo...",
+                Duration = 2
+            })
+        end
+        tweenTo(tpTargetCF, Config.TweenSpeed)
+        task.wait(0.3)
+    end
+
+    -- 3. Kích hoạt ProximityPrompt của Teleporter (nếu có)
+    if tpModel then
+        local prompt = tpModel:FindFirstChildWhichIsA("ProximityPrompt", true)
+        if prompt and fireproximityprompt then
+            pcall(function() fireproximityprompt(prompt) end)
+            task.wait(0.2)
+        end
+    end
+
+    -- 4. Kích hoạt Remote TeleportToPortal từ cổng
+    local tpPortalRemote = ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("TeleportToPortal")
+    if tpPortalRemote then
+        pcall(function()
+            tpPortalRemote:FireServer(portalId)
+        end)
+    end
+
+    -- 5. Đợi server xử lý và chuyển đảo (tối đa 4s)
+    local waited = 0
+    while waited < 4 do
+        task.wait(0.5)
+        waited = waited + 0.5
+        if getCurrentIsland() == targetIsland then
+            break
+        end
+    end
+
+    local success = (getCurrentIsland() == targetIsland)
+    if success and MhnaaUI and MhnaaUI.Notify then
+        MhnaaUI:Notify({
+            Title = "Teleport",
+            Content = "Đã dịch chuyển thành công sang " .. targetIsland .. "!",
+            Duration = 3
+        })
+    end
+
+    isTeleportingIsland = false
+    return success
 end
 
 local function calculateTargetCFrame(targetInstance, positionMode, distance)
@@ -568,7 +667,7 @@ end)
 task.spawn(function()
     while scriptRunning do
         task.wait(0.1)
-        local isMobFarming = (Config.AutoFarmSelectedMob or Config.AutoQuestByLevel or Config.AutoFarmMulti) and not Config.AutoFarmSelectedBoss
+        local isMobFarming = (Config.AutoFarmSelectedMob or Config.AutoQuestByLevel or Config.AutoFarmMulti) and not Config.AutoFarmSelectedBoss and not isTeleportingIsland
         if isMobFarming then
             pcall(function()
                 local char = getCharacter()
@@ -724,7 +823,7 @@ end)
 task.spawn(function()
     while scriptRunning do
         task.wait(0.15)
-        if Config.AutoFarmSelectedBoss then
+        if Config.AutoFarmSelectedBoss and not isTeleportingIsland then
             pcall(function()
                 local char = getCharacter()
                 local root = getRoot()
@@ -903,7 +1002,7 @@ end
 task.spawn(function()
     while scriptRunning do
         task.wait(0.25)
-        if Config.AutoPrestige then
+        if Config.AutoPrestige and not isTeleportingIsland then
             pcall(function()
                 local char = getCharacter()
                 local root = getRoot()
