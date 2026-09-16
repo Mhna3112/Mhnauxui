@@ -227,11 +227,11 @@ local BossConfig = {
     ["Undyne"]                  = { Summoner = "Undyne Summon",      Island = "Ruin City" },
     ["Solemn Lament"]           = { Summoner = "Griefbound Ferryman",Island = "Ice Island" },
     ["Ichigo True Bankai"]      = { Summoner = "Zangetsu",           Island = "Quincy Castle" },
-    ["Dio"]                     = { Summoner = "Sacrifice Table",    Island = "Ruin City" },
-    ["Cid Kagenou"]             = { Summoner = "Sacrifice Table",    Island = "Ruin City" },
-    ["The Red Mist"]            = { Summoner = "Sacrifice Table",    Island = "Ruin City" },
-    ["One-Eyed Owl"]            = { Summoner = "Sacrifice Table",    Island = "Ruin City" },
-    ["Demon Infernal"]          = { Summoner = "Sacrifice Table",    Island = "Ruin City" }
+    ["Dio"]                     = { Summoner = "Sacrifice Table",    Island = "Grave Island" },
+    ["Cid Kagenou"]             = { Summoner = "Sacrifice Table",    Island = "Grave Island" },
+    ["The Red Mist"]            = { Summoner = "Sacrifice Table",    Island = "Grave Island" },
+    ["One-Eyed Owl"]            = { Summoner = "Sacrifice Table",    Island = "Grave Island" },
+    ["Demon Infernal"]          = { Summoner = "Sacrifice Table",    Island = "Grave Island" }
 }
 
 local AllBossNames = {}
@@ -849,33 +849,159 @@ task.spawn(function()
     end
 end)
 
--- Worker: Auto Prestige
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 🌟 THUẬT TOÁN TỰ ĐỘNG LÀM NHIỆM VỤ PRESTIGE & FARM BOSS (SMART PRESTIGE)
+-- ═══════════════════════════════════════════════════════════════════════════
+local function getPrestigeRequirements()
+    local pGui = LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("Prestige")
+    local reqHolder = pGui and pGui:FindFirstChild("RequirementsHolder", true)
+    local list = {}
+    if reqHolder then
+        for _, rf in ipairs(reqHolder:GetChildren()) do
+            if rf:IsA("Frame") and rf.Name:sub(1, 4) == "Req_" then
+                local label = rf:FindFirstChild("Requirement")
+                if label and label:IsA("TextLabel") then
+                    local text = label.Text
+                    local namePart, cur, max = string.match(text, "^(.-)%s*%((%d+)%/(%d+)%)$")
+                    if namePart and cur and max then
+                        local cVal = tonumber(cur)
+                        local mVal = tonumber(max)
+                        table.insert(list, {
+                            id = rf.Name,
+                            name = namePart:gsub("%s+$", ""),
+                            cur = cVal,
+                            max = mVal,
+                            done = cVal >= mVal
+                        })
+                    else
+                        table.insert(list, { id = rf.Name, name = text, done = false })
+                    end
+                end
+            end
+        end
+    end
+    table.sort(list, function(a, b) return (a.id or "") < (b.id or "") end)
+    return list
+end
+
+local function findBossForRequirement(reqName)
+    local lowName = string.lower(reqName)
+    for bName, bInfo in pairs(BossConfig) do
+        if string.find(lowName, string.lower(bName)) then
+            return bName, bInfo
+        end
+    end
+    if string.find(lowName, "cid") then
+        return "Cid Kagenou", BossConfig["Cid Kagenou"]
+    elseif string.find(lowName, "owl") or string.find(lowName, "one-eyed") then
+        return "One-Eyed Owl", BossConfig["One-Eyed Owl"]
+    end
+    return nil, nil
+end
+
+-- Worker: Smart Auto Prestige (Đọc yêu cầu, tự bay đi spawn Boss, farm boss, cày cấp & chuyển sinh)
 task.spawn(function()
     while scriptRunning do
-        task.wait(2)
+        task.wait(0.25)
         if Config.AutoPrestige then
             pcall(function()
-                local inputFunc = getInputFunction()
-                local pDataMod = ReplicatedStorage.Modules.Configurations:FindFirstChild("PrestigeData")
-                if inputFunc and pDataMod then
-                    local pData = require(pDataMod)
-                    local curPrestige = LocalPlayer.Data.Prestige.Value
-                    local curLevel = LocalPlayer.Data.Level.Value
-                    local canPrestige = true
+                local char = getCharacter()
+                local root = getRoot()
+                local hum = getHumanoid()
+                if not char or not root or not hum or hum.Health <= 0 then return end
 
-                    if pData and pData.GetRequirements then
-                        local reqs = pData.GetRequirements(curPrestige + 1)
-                        if reqs then
-                            for _, req in ipairs(reqs) do
-                                if req.Type == "Level" and curLevel < req.Value then
-                                    canPrestige = false
+                local inputFunc = getInputFunction()
+                local reqs = getPrestigeRequirements()
+                local allDone = true
+                local targetBossName = nil
+                local targetBossInfo = nil
+                local needLevelUp = false
+
+                for _, r in ipairs(reqs) do
+                    if not r.done then
+                        allDone = false
+                        local bName, bInfo = findBossForRequirement(r.name)
+                        if bName and not targetBossName then
+                            targetBossName = bName
+                            targetBossInfo = bInfo
+                        elseif string.find(string.lower(r.name), "reach level") then
+                            needLevelUp = true
+                        end
+                    end
+                end
+
+                -- 1. Nếu tất cả điều kiện đã xong -> Chuyển sinh ngay!
+                if allDone and #reqs > 0 then
+                    currentCombatTarget = nil
+                    if inputFunc then
+                        inputFunc:InvokeServer("Prestige")
+                    end
+                    task.wait(2)
+                    return
+                end
+
+                -- 2. Ưu tiên diệt Boss theo yêu cầu (Cid Kagenou, One-Eyed Owl,...)
+                if targetBossName and targetBossInfo then
+                    equipSelectedWeapon(Config.SelectWeapon)
+
+                    local activeBoss = nil
+                    local enemiesFolder = workspace:FindFirstChild("Enemies")
+                    if enemiesFolder then
+                        for _, e in ipairs(enemiesFolder:GetChildren()) do
+                            if e:IsA("Model") and e:FindFirstChildOfClass("Humanoid") and e.Humanoid.Health > 0 then
+                                if string.find(string.lower(e.Name), string.lower(targetBossName)) then
+                                    activeBoss = e
+                                    break
                                 end
                             end
                         end
                     end
-                    if canPrestige then
-                        inputFunc:InvokeServer("Prestige")
+
+                    -- Chưa có Boss -> Triệu hồi qua Whisperer / Sacrifice Table
+                    if not activeBoss then
+                        currentCombatTarget = nil
+                        local tIsland = targetBossInfo.Island or "Grave Island"
+                        if getCurrentIsland() ~= tIsland then
+                            teleportToIsland(tIsland)
+                            task.wait(1.5)
+                            return
+                        end
+
+                        local summoner = workspace.NPCs:FindFirstChild(targetBossInfo.Summoner)
+                        if summoner then
+                            local sPos = summoner:GetPivot().Position
+                            local distToS = (sPos - root.Position).Magnitude
+                            if distToS > 20 then
+                                tweenTo(summoner:GetPivot() * CFrame.new(0, 0, 5), Config.TweenSpeed)
+                            else
+                                if inputFunc then
+                                    inputFunc:InvokeServer("SpawnBoss", summoner, targetBossName)
+                                    task.wait(1.5)
+                                end
+                            end
+                        end
+                        return
                     end
+
+                    -- Boss đã xuất hiện -> Khóa vị trí chiến đấu và tấn công
+                    currentCombatTarget = activeBoss
+                    local targetCF = calculateTargetCFrame(activeBoss, Config.SelectFarmMode, Config.DistanceY)
+                    if targetCF then
+                        local dist = (targetCF.Position - root.Position).Magnitude
+                        if dist > 12 then
+                            tweenTo(targetCF, Config.TweenSpeed)
+                        else
+                            root.Velocity = Vector3.zero
+                            root.RotVelocity = Vector3.zero
+                            root.CFrame = targetCF
+                        end
+                    end
+                    return
+                end
+
+                -- 3. Cần thêm Level -> Bật AutoQuestByLevel
+                if needLevelUp and not Config.AutoQuestByLevel then
+                    Config.AutoQuestByLevel = true
                 end
             end)
         end
@@ -1145,20 +1271,71 @@ TabMain:CreateToggle({
     end
 })
 
-TabMain:CreateSection("AUTO PRESTIGE (CHUYỂN SINH)")
+TabMain:CreateSection("AUTO PRESTIGE THÔNG MINH (SMART PRESTIGE)")
 
-TabMain:CreateToggle({
-    Title = "Auto Prestige",
-    Description = "Tự động kiểm tra điều kiện và chuyển sinh ngay khi đủ điều kiện",
-    Default = Config.AutoPrestige,
-    Callback = function(state) Config.AutoPrestige = state end
+local prestigeStatusLabel = TabMain:CreateLabel({
+    Title = "Đang kiểm tra yêu cầu Prestige..."
 })
 
-TabMain:CreateDropdown({
-    Title = "Chế độ Prestige",
-    Options = { "Khi đủ nhiệm vụ", "Khi đạt Max Level", "Ngay lập tức" },
-    Default = Config.PrestigeMode,
-    Callback = function(val) Config.PrestigeMode = val end
+task.spawn(function()
+    while scriptRunning do
+        pcall(function()
+            local reqs = getPrestigeRequirements()
+            local strList = {}
+            for _, r in ipairs(reqs) do
+                if not r.done then
+                    local shortName = r.name:gsub("Kill %d+ ", ""):gsub("Reach Level ", "Lvl ")
+                    table.insert(strList, string.format("%s: %d/%d", shortName, r.cur or 0, r.max or 0))
+                end
+            end
+            if #strList == 0 then
+                prestigeStatusLabel:SetText("Prestige: Đã đủ toàn bộ điều kiện! Sẵn sàng chuyển sinh.")
+            else
+                prestigeStatusLabel:SetText("Cần làm: " .. table.concat(strList, " | "))
+            end
+        end)
+        task.wait(2)
+    end
+end)
+
+TabMain:CreateToggle({
+    Title = "Auto Prestige (Tự Farm Yêu Cầu & Triệu Hồi Boss)",
+    Description = "Tự động đọc quest Prestige, bay đến Grave Island triệu hồi Cid Kagenou/Owl và farm cho tới khi đủ",
+    Default = Config.AutoPrestige,
+    Callback = function(state)
+        Config.AutoPrestige = state
+        if not state then
+            currentCombatTarget = nil
+            stopCurrentTween()
+        end
+    end
+})
+
+TabMain:CreateButton({
+    Title = "Triệu Hồi Boss Prestige Hiện Tại Ngay",
+    Description = "Lập tức bay tới Whisperer/Sacrifice Table và triệu hồi Boss mà Prestige đang yêu cầu",
+    Callback = function()
+        local reqs = getPrestigeRequirements()
+        local summonedAny = false
+        for _, r in ipairs(reqs) do
+            if not r.done then
+                local bName, bInfo = findBossForRequirement(r.name)
+                if bName and bInfo then
+                    local summoner = workspace.NPCs:FindFirstChild(bInfo.Summoner)
+                    local inputFunc = getInputFunction()
+                    if inputFunc and summoner then
+                        inputFunc:InvokeServer("SpawnBoss", summoner, bName)
+                        MhnaaUI:Notify({ Title = "Prestige Boss", Content = "Đã gửi yêu cầu triệu hồi: " .. bName, Duration = 3 })
+                        summonedAny = true
+                        break
+                    end
+                end
+            end
+        end
+        if not summonedAny then
+            MhnaaUI:Notify({ Title = "Prestige Boss", Content = "Không có Boss nào đang cần triệu hồi cho Prestige!", Duration = 3 })
+        end
+    end
 })
 
 TabMain:CreateSection("AUTO CÂU CÁ (FISHING)")
