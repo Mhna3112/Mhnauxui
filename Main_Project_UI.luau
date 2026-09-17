@@ -99,6 +99,8 @@ local Config = {
     SelectFarmMode = "Above", -- Above, Beside, Behind, Below
     TweenSpeed = 100, -- Tốc độ bay Tween an toàn (100 studs/s)
     InstantTween = false, -- Tùy chọn di chuyển tức thì (Instant Move) trong cùng đảo
+    InstaKill = false, -- Chế độ InstaKill dồn sát thương cực hạn (nhamnhi Hub)
+    InstaKillThreshold = 10, -- Ngưỡng phần trăm máu (% HP) hoặc dồn đòn kết liễu
     
     -- Main Tab (Farming)
     SelectedMob = "Ghoul Investigator",
@@ -652,11 +654,16 @@ refreshWeapons()
 -- ═══════════════════════════════════════════════════════════════════════════
 local currentCombatTarget = nil
 
--- Worker: Tấn công thường (Fast Attack - Server Remote Protocol từ nhamnhi Hub)
+-- Worker: Tấn công thường & InstaKill (Server Remote Protocol từ nhamnhi Hub)
 task.spawn(function()
     while scriptRunning do
-        task.wait(Config.AttackSpeed or 0.08)
-        if (Config.AutoAttack or Config.AutoFarmSelectedMob or Config.AutoQuestByLevel or Config.AutoFarmMulti or Config.AutoFarmSelectedBoss) 
+        local delayTime = Config.AttackSpeed or 0.08
+        if Config.InstaKill then
+            delayTime = 0.015 -- Tốc độ cực hạn khi bật InstaKill
+        end
+        task.wait(delayTime)
+
+        if (Config.AutoAttack or Config.AutoFarmSelectedMob or Config.AutoQuestByLevel or Config.AutoFarmMulti or Config.AutoFarmSelectedBoss or Config.InstaKill) 
             and currentCombatTarget and not isTweening then
             pcall(function()
                 local char = getCharacter()
@@ -668,7 +675,22 @@ task.spawn(function()
                 -- Gửi trực tiếp Remote M1 từ Game Network (không phụ thuộc chuột/camera)
                 local remInput = getRemoteInput()
                 if remInput then
-                    remInput:FireServer("Tool", "M1")
+                    if Config.InstaKill then
+                        -- Kiểm tra ngưỡng máu nếu quái thấp hơn threshold thì dồn xả đòn kết liễu
+                        local hum = currentCombatTarget:FindFirstChildOfClass("Humanoid")
+                        local burstCount = 3
+                        if hum and hum.MaxHealth > 0 then
+                            local hpPercent = (hum.Health / hum.MaxHealth) * 100
+                            if hpPercent <= (Config.InstaKillThreshold or 10) then
+                                burstCount = 6 -- Xả liên hoàn kết liễu
+                            end
+                        end
+                        for i = 1, burstCount do
+                            remInput:FireServer("Tool", "M1")
+                        end
+                    else
+                        remInput:FireServer("Tool", "M1")
+                    end
                 else
                     local tool = char:FindFirstChildOfClass("Tool")
                     if tool then tool:Activate() end
@@ -1331,14 +1353,22 @@ TabHome:CreateToggle({
     Callback = function(state) Config.AutoAttack = state end
 })
 
+TabHome:CreateToggle({
+    Title = "InstaKill Mob (nhamnhi Hub Multi-Burst)",
+    Description = "Dồn đòn đánh M1 qua Remote cực hạn và xả burst kết liễu quái cực nhanh",
+    Default = Config.InstaKill,
+    Callback = function(state)
+        Config.InstaKill = state
+    end
+})
+
 TabHome:CreateSlider({
-    Title = "Tốc độ chém (Attack Delay)",
-    Min = 0.05,
-    Max = 0.5,
-    Default = Config.AttackSpeed,
-    Decimals = 2,
-    Suffix = "s",
-    Callback = function(val) Config.AttackSpeed = val end
+    Title = "InstaKill HP Threshold (Ngưỡng kết liễu)",
+    Min = 5,
+    Max = 50,
+    Default = Config.InstaKillThreshold,
+    Suffix = "% HP",
+    Callback = function(val) Config.InstaKillThreshold = val end
 })
 
 TabHome:CreateSection("KỸ NĂNG (SKILL)")
