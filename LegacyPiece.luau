@@ -260,6 +260,10 @@ local function getInputFunction()
         or (ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Functions") and ReplicatedStorage.Remotes.Functions:FindFirstChild("Input"))
 end
 
+local function getRemoteInput()
+    return ReplicatedStorage:FindFirstChild("Remotes") and ReplicatedStorage.Remotes:FindFirstChild("Input")
+end
+
 local function getTeleportUI()
     local g = renv._G or _G
     return g.TeleportUI
@@ -648,7 +652,7 @@ refreshWeapons()
 -- ═══════════════════════════════════════════════════════════════════════════
 local currentCombatTarget = nil
 
--- Worker: Tấn công thường (Fast Attack)
+-- Worker: Tấn công thường (Fast Attack - Server Remote Protocol từ nhamnhi Hub)
 task.spawn(function()
     while scriptRunning do
         task.wait(Config.AttackSpeed or 0.08)
@@ -657,18 +661,26 @@ task.spawn(function()
             pcall(function()
                 local char = getCharacter()
                 if not char then return end
-                local tool = char:FindFirstChildOfClass("Tool")
-                if tool then
-                    tool:Activate()
+                
+                -- Đảm bảo đã cầm vũ khí được chọn
+                equipSelectedWeapon(Config.SelectWeapon)
+                
+                -- Gửi trực tiếp Remote M1 từ Game Network (không phụ thuộc chuột/camera)
+                local remInput = getRemoteInput()
+                if remInput then
+                    remInput:FireServer("Tool", "M1")
+                else
+                    local tool = char:FindFirstChildOfClass("Tool")
+                    if tool then tool:Activate() end
+                    VirtualUser:CaptureController()
+                    VirtualUser:Button1Down(Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2))
                 end
-                VirtualUser:CaptureController()
-                VirtualUser:Button1Down(Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y / 2))
             end)
         end
     end
 end)
 
--- Worker: Combo Chiêu Thức (Auto Skill)
+-- Worker: Combo Chiêu Thức (Auto Skill - Server Remote Protocol)
 task.spawn(function()
     local skillKeyMap = {
         Z = Enum.KeyCode.Z,
@@ -681,13 +693,21 @@ task.spawn(function()
     while scriptRunning do
         task.wait(Config.SkillDelay or 0.5)
         if Config.AutoUseSelectedSkill and currentCombatTarget and not isTweening then
+            equipSelectedWeapon(Config.SelectWeapon)
+            local remInput = getRemoteInput()
             for _, k in ipairs(Config.SelectedSkillTable) do
-                local enumK = skillKeyMap[k]
-                if enumK and currentCombatTarget and not isTweening then
+                if currentCombatTarget and not isTweening then
                     pcall(function()
-                        VirtualInputManager:SendKeyEvent(true, enumK, false, game)
-                        task.wait(0.05)
-                        VirtualInputManager:SendKeyEvent(false, enumK, false, game)
+                        if remInput then
+                            remInput:FireServer("Skill", k)
+                        else
+                            local enumK = skillKeyMap[k]
+                            if enumK then
+                                VirtualInputManager:SendKeyEvent(true, enumK, false, game)
+                                task.wait(0.05)
+                                VirtualInputManager:SendKeyEvent(false, enumK, false, game)
+                            end
+                        end
                     end)
                     task.wait(Config.SkillDelay or 0.5)
                 end
@@ -1528,11 +1548,16 @@ TabBoss:CreateToggle({
 
 TabBoss:CreateToggle({
     Title = "Auto Farm Selected Boss",
-    Description = "Tự động dịch chuyển, khóa góc đánh và tiêu diệt Boss đã chọn",
+    Description = "Tự động triệu hồi (nếu chưa spawn), tiếp cận và tiêu diệt Boss đã chọn",
     Default = Config.AutoFarmSelectedBoss,
     Callback = function(state)
         Config.AutoFarmSelectedBoss = state
-        if not state then stopCurrentTween() currentCombatTarget = nil end
+        if state then
+            Config.AutoSpawnBoss = true
+        else
+            stopCurrentTween()
+            currentCombatTarget = nil
+        end
     end
 })
 
