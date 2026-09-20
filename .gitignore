@@ -8,3 +8,5 @@ stage1_*
 test_*
 unpacked_*
 lemon-peach.lua
+luau_bin/
+gemini.md

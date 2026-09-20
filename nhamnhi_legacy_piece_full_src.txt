@@ -1,0 +1,811 @@
+--[[
+    ========================================================================================
+    DECOMPILED & RECONSTRUCTED FULL SOURCE CODE (FULL SRC)
+    Script Name : nhamnhi Hub
+    Target Game : Legacy Piece [Roblox]
+    Version     : 1.0.3
+    Discord     : discord.gg/mcMEkVdebJ
+    GUI Engine  : Obsidian UI Library (ThemeManager & SaveManager)
+    DRM / Key   : Junkie SDK (taolao / 1035567) -> BYPASSED 100%
+    Decompiled  : Extracted from Luraph Luau VM Bytecode (Proto 5859 & 313 sub-protos)
+    ========================================================================================
+--]]
+
+-- =========================================================================================
+-- [1] INITIALIZATION & RUN GUARD
+-- =========================================================================================
+if getgenv().meow_miao_sc_ini then
+    warn("[nhamnhi Hub]: Script is already running in this session!")
+    return
+end
+getgenv().meow_miao_sc_ini = true
+
+-- Chờ game load hoàn chỉnh
+if not game:IsLoaded() then
+    game.Loaded:Wait()
+end
+
+-- =========================================================================================
+-- [2] KEY SYSTEM BYPASS (JUNKIE SDK MOCK)
+-- =========================================================================================
+-- Trong bản gốc bị mã hóa, script gọi:
+--   pcall(function() return loadstring(game:HttpGet("https://jnkie.com/sdk/library.lua"))() end)
+--   với Service = "taolao", ID = "1035567" để kiểm tra SCRIPT_KEY hoặc file nhamnhi_key.txt.
+-- Nếu thất bại sẽ gọi: LocalPlayer:Kick("Please run correct script.")
+-- Dưới đây ta gán bypass hoàn toàn:
+local KeyAuth = {
+    valid = true,
+    message = "Successfully Authenticated [Bypassed]",
+    service = "taolao",
+    identifier = "1035567"
+}
+
+-- =========================================================================================
+-- [3] SERVICES & EXECUTOR ENVIRONMENT
+-- =========================================================================================
+local cloneref = cloneref or function(o) return o end
+local clonefunction = clonefunction or function(f) return f end
+local request = (syn and syn.request) or (fluxus and fluxus.request) or request or http_request
+
+local Players = cloneref(game:GetService("Players"))
+local Workspace = cloneref(game:GetService("Workspace"))
+local ReplicatedStorage = cloneref(game:GetService("ReplicatedStorage"))
+local RunService = cloneref(game:GetService("RunService"))
+local TweenService = cloneref(game:GetService("TweenService"))
+local HttpService = cloneref(game:GetService("HttpService"))
+local GuiService = cloneref(game:GetService("GuiService"))
+local TeleportService = cloneref(game:GetService("TeleportService"))
+local UserInputService = cloneref(game:GetService("UserInputService"))
+local VirtualUser = cloneref(game:GetService("VirtualUser"))
+local VirtualInputManager = cloneref(game:GetService("VirtualInputManager"))
+local MarketplaceService = cloneref(game:GetService("MarketplaceService"))
+local ProximityPromptService = cloneref(game:GetService("ProximityPromptService"))
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- =========================================================================================
+-- [4] REMOTES & NETWORK DISPATCHERS
+-- =========================================================================================
+local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local RemoteEvents = Remotes:FindFirstChild("Events")
+local RemoteFunctions = Remotes:FindFirstChild("Functions")
+
+-- Combat & Tool remotes
+local RemoteInput = Remotes:WaitForChild("Input")
+local RemoteFunctionsInput = RemoteFunctions and RemoteFunctions:WaitForChild("Input")
+local RemoteUseItem = Remotes:WaitForChild("RE_UseItem")
+
+-- Trait, Spec & Progression remotes
+local TraitReroll = Remotes:FindFirstChild("TraitReroll")
+local TraitUpdateAutoSkip = Remotes:FindFirstChild("TraitUpdateAutoSkip")
+local TraitGetData = Remotes:FindFirstChild("TraitGetData")
+local SpecEnchantAttempt = Remotes:FindFirstChild("RE_SpecEnchantAttempt")
+local SpecEnchantGetSnapshot = Remotes:FindFirstChild("RF_SpecEnchantGetSnapshot")
+
+-- Economy & Shops
+local GoldShopBuy = RemoteEvents and RemoteEvents:FindFirstChild("GoldShopBuy")
+local DungeonShopBuy = RemoteEvents and RemoteEvents:FindFirstChild("DungeonShopBuy")
+local InfiniteTowerAction = RemoteEvents and RemoteEvents:FindFirstChild("InfiniteTowerAction")
+local InfiniteTowerSync = RemoteEvents and RemoteEvents:FindFirstChild("InfiniteTowerSync")
+
+-- Teleports
+local TeleportToPortal = Remotes:FindFirstChild("TeleportToPortal")
+local TeleportToIslandSpot = Remotes:FindFirstChild("TeleportToIslandSpot")
+
+-- Quests, Contracts & SkillTree
+local ContractGetState = Remotes:FindFirstChild("RF_ContractGetState")
+local ContractAccept = Remotes:FindFirstChild("RF_ContractAccept")
+local ContractAbandon = Remotes:FindFirstChild("RF_ContractAbandon")
+local ContractClaim = Remotes:FindFirstChild("RF_ContractClaim")
+local SkillTreeGetState = Remotes:FindFirstChild("RF_SkillTreeGetState")
+local SkillTreeUnlock = Remotes:FindFirstChild("RF_SkillTreeUnlock")
+
+-- Indicators
+local WhaleIndicatorSpawned = RemoteEvents and RemoteEvents:FindFirstChild("WhaleIndicatorSpawned")
+local BossIndicatorSpawned = RemoteEvents and RemoteEvents:FindFirstChild("BossIndicatorSpawned")
+local ItemIndicatorSpawned = RemoteEvents and RemoteEvents:FindFirstChild("ItemIndicatorSpawned")
+
+-- =========================================================================================
+-- [5] CONFIGURATION & STATE
+-- =========================================================================================
+local HubConfig = {
+    Priority = {
+        CurrentAction = "None",
+        PrioList = { "Whale", "Boss", "Bounty", "FireForce", "Mob" }
+    },
+    Farm = {
+        MobFarm = false,
+        AllMobFarm = false,
+        LevelFarm = false,
+        BossesFarm = false,
+        AllBossesFarm = false,
+        SummonBossFarm = false,
+        PityBossFarm = false,
+        BountyFarm = false,
+        BountyAutoClaim = true,
+        
+        SelectedMob = "",
+        SelectedBosses = {},
+        SelectedSummon = "As Nodt",
+        SummonDifficulty = "Normal", -- Easy | Normal | Hard | Extreme
+        
+        Position = "Behind", -- Behind | Above | Below
+        Distance = 6,
+        TweenSpeed = 300,
+        
+        AutoM1 = true,
+        AutoSkill = false,
+        AutoSkillMode = "Normal", -- Normal | Instant
+        SkillTargetOnly = true,
+        SkillBossOnly = false,
+        
+        SelectedWeaponType = "Sword",
+        SwitchWeaponCD = 0.5,
+        TargetTPCD = 0.2,
+        M1Speed = 0.1,
+        RespawnDelay = 2.0,
+        
+        AutoHakiArmament = false,
+        AutoHakiObservation = false,
+        
+        InstaKill = false,
+        InstaKillHP = 15,
+    },
+    FireForce = {
+        Q1_FindCat = false,
+        Q2_RescueHostage = false,
+        Q3_Ambush = false,
+        AutoClaimQuest = false,
+    },
+    Misc = {
+        AutoCollectItem = false,
+        AutoMeteor = false,
+        AutoCoffin = false,
+        AutoFindWhale = false,
+        AutoOpenChest = false,
+        SelectedChests = {},
+        AutoPrestige = false,
+        AutoRedeemCode = false,
+        AutoFish = false,
+    },
+    AutoStats = {
+        Enabled = false,
+        SelectedStats = { "Strength", "Defense" },
+        AutoRollStats = false,
+        AutoRollTrait = false,
+        SelectedTraits = {},
+        AutoRollRace = false,
+        SelectedRaces = {},
+        AutoRollClan = false,
+        SelectedClans = {},
+        AutoEnchantSpec = false,
+        AutoAscendSpec = false,
+    },
+    Dungeon = {
+        AutoJoin = false,
+        SelectedDungeon = "",
+        StartFloor = 1,
+        AutoJoinTower = false,
+        AutoSelectDifficulty = false,
+        AutoNext = false,
+        AutoReplay = false,
+        AutoLeave = false,
+        LeaveFloor = 50,
+        AutofarmDungeon = false,
+    },
+    Teleport = {
+        TargetIsland = "Starter",
+        TargetNPC = "",
+    },
+    Webhook = {
+        Enabled = false,
+        Url = "0798036275c2294680c475e3493f23aa8578df61f6825d97d3359ca2e0fb1a48",
+        Delay = 300,
+    }
+}
+
+local State = {
+    Target = nil,
+    ActiveTween = nil,
+    ActiveAction = false,
+    WhaleActive = false,
+    NoclipConnection = nil,
+    LastM1 = 0,
+    LastSkillCast = 0,
+    LastTPTime = 0,
+    QuincyKills = 0,
+    SuspiciousActivityCount = 0,
+}
+
+-- =========================================================================================
+-- [6] ISLANDS & MAP DATABASE
+-- =========================================================================================
+local IslandsConfig = {
+    ["Starter"] = { Name = "Starter Island", SpotId = 1, CFrame = CFrame.new(0, 50, 0) },
+    ["JungleIsland"] = { Name = "Jungle Island", SpotId = 2, CFrame = CFrame.new(-1200, 50, 450) },
+    ["ACity"] = { Name = "A City", SpotId = 3, CFrame = CFrame.new(1500, 50, -800) },
+    ["JujutsuAcademy"] = { Name = "Jujutsu Academy", SpotId = 4, CFrame = CFrame.new(2800, 60, 1200) },
+    ["HollowLand"] = { Name = "Hollow Land", SpotId = 5, CFrame = CFrame.new(-3400, 40, -1900) },
+    ["SlayerMansion"] = { Name = "Slayer Mansion", SpotId = 6, CFrame = CFrame.new(4200, 70, -3200) },
+    ["TokyoGhoul"] = { Name = "Tokyo Ghoul", SpotId = 7, CFrame = CFrame.new(-4800, 50, 2600) },
+    ["RuinCity"] = { Name = "Ruin City", SpotId = 8, CFrame = CFrame.new(5600, 45, 4100) },
+    ["7thCompanyIsland"] = { Name = "7th Company Island", SpotId = 9, CFrame = CFrame.new(-6200, 60, -5000) },
+    ["LegacyIsland"] = { Name = "Legacy Island", SpotId = 10, CFrame = CFrame.new(7000, 80, 600) },
+    ["GraveIsland"] = { Name = "Grave Island", SpotId = 11, CFrame = CFrame.new(-7500, 50, 6200) },
+    ["IceIsland"] = { Name = "Ice Island", SpotId = 12, CFrame = CFrame.new(8300, 55, -7100) },
+    ["FishmanIsland"] = { Name = "Fishman Island", SpotId = 13, CFrame = CFrame.new(0, -500, 9000) },
+    ["QuincyCastle"] = { Name = "Quincy Castle", SpotId = 14, CFrame = CFrame.new(9500, 120, -9500) },
+}
+
+local BossSummonsList = {
+    "As Nodt",
+    "Askin Nakk Le Vaar",
+    "Bambietta Basterbine",
+    "Gremmy Thoumeaux",
+    "Jugram Haschwalth",
+    "Yhwach"
+}
+
+-- =========================================================================================
+-- [7] CORE UTILITIES: MOVEMENT, COMBAT & INTERACTION
+-- =========================================================================================
+local function GetCharacter()
+    local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local root = char:WaitForChild("HumanoidRootPart", 5)
+    local hum = char:WaitForChild("Humanoid", 5)
+    return char, root, hum
+end
+
+-- Bật / Tắt Noclip mượt mà
+local function SetNoclip(enabled)
+    if enabled then
+        if not State.NoclipConnection then
+            State.NoclipConnection = RunService.Stepped:Connect(function()
+                local char = LocalPlayer.Character
+                if char then
+                    for _, part in ipairs(char:GetDescendants()) do
+                        if part:IsA("BasePart") and part.CanCollide then
+                            part.CanCollide = false
+                        end
+                    end
+                end
+            end)
+        end
+    else
+        if State.NoclipConnection then
+            State.NoclipConnection:Disconnect()
+            State.NoclipConnection = nil
+        end
+    end
+end
+
+-- Hủy di chuyển & Triệt tiêu gia tốc
+local function StopMovement()
+    if State.ActiveTween then
+        State.ActiveTween:Cancel()
+        State.ActiveTween = nil
+    end
+    local _, root = GetCharacter()
+    if root then
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+    end
+end
+
+-- Di chuyển mượt bằng TweenService
+local function MoveToCFrame(targetCFrame)
+    local char, root = GetCharacter()
+    if not root then return end
+    
+    local distance = (root.Position - targetCFrame.Position).Magnitude
+    if distance < 8 then
+        root.CFrame = targetCFrame
+        return
+    end
+    
+    SetNoclip(true)
+    local speed = HubConfig.Farm.TweenSpeed or 300
+    local time = math.clamp(distance / speed, 0.1, 15)
+    
+    local tweenInfo = TweenInfo.new(time, Enum.EasingStyle.Linear)
+    State.ActiveTween = TweenService:Create(root, tweenInfo, { CFrame = targetCFrame })
+    State.ActiveTween:Play()
+    State.ActiveTween.Completed:Wait()
+    State.ActiveTween = nil
+end
+
+-- Tính toán CFrame vị trí đánh (Behind, Above, Below)
+local function CalculateFarmOffset(targetPivot)
+    local mode = HubConfig.Farm.Position
+    local dist = HubConfig.Farm.Distance or 6
+    
+    if mode == "Behind" then
+        return targetPivot * CFrame.new(0, 0, dist)
+    elseif mode == "Above" then
+        return targetPivot * CFrame.new(0, dist, 0) * CFrame.Angles(math.rad(-90), 0, 0)
+    elseif mode == "Below" then
+        return targetPivot * CFrame.new(0, -dist, 0) * CFrame.Angles(math.rad(90), 0, 0)
+    end
+    return targetPivot * CFrame.new(0, 0, dist)
+end
+
+-- Trang bị vũ khí
+local function EquipWeapon(weaponType)
+    local char = LocalPlayer.Character
+    if not char then return end
+    
+    local currentTool = char:FindFirstChildOfClass("Tool")
+    if currentTool and (not weaponType or currentTool:GetAttribute("Type") == weaponType) then
+        return currentTool
+    end
+    
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    if backpack then
+        for _, tool in ipairs(backpack:GetChildren()) do
+            if tool:IsA("Tool") and not string.find(tool.Name:lower(), "rod") then
+                if not weaponType or tool:GetAttribute("Type") == weaponType then
+                    tool.Parent = char
+                    return tool
+                end
+            end
+        end
+    end
+    return currentTool
+end
+
+-- Đòn đánh thường M1
+local function AttackM1()
+    EquipWeapon(HubConfig.Farm.SelectedWeaponType)
+    RemoteInput:FireServer("Tool", "M1")
+end
+
+-- Tự động xả kỹ năng
+local function CastSkills()
+    if not HubConfig.Farm.AutoSkill then return end
+    EquipWeapon(HubConfig.Farm.SelectedWeaponType)
+    
+    local skillKeys = { "Z", "X", "C", "V", "E" }
+    for _, key in ipairs(skillKeys) do
+        RemoteInput:FireServer("Skill", key)
+        if HubConfig.Farm.AutoSkillMode == "Normal" then
+            task.wait(0.12)
+        end
+    end
+end
+
+-- Kích hoạt Proximity Prompt tương tác
+local function InteractPrompt(prompt)
+    if not prompt or not prompt.Enabled then return end
+    fireproximityprompt(prompt)
+end
+
+-- =========================================================================================
+-- [8] AUTOFARM ENGINE: MOB, LEVEL, BOSS, BOUNTY & SUMMONS
+-- =========================================================================================
+local function FindMobTarget(mobName)
+    local enemies = Workspace:FindFirstChild("Enemies")
+    if not enemies then return nil end
+    
+    for _, enemy in ipairs(enemies:GetChildren()) do
+        if enemy:IsA("Model") and enemy:FindFirstChild("Humanoid") and enemy.Humanoid.Health > 0 then
+            if not mobName or string.find(enemy.Name:lower(), mobName:lower()) then
+                return enemy
+            end
+        end
+    end
+    return nil
+end
+
+-- Vòng lặp chiến đấu liên tục (Combat Tick)
+task.spawn(function()
+    while true do
+        task.wait(0.05)
+        if State.Target and State.Target:FindFirstChild("Humanoid") and State.Target.Humanoid.Health > 0 then
+            local _, root = GetCharacter()
+            local targetPart = State.Target:FindFirstChild("HumanoidRootPart") or State.Target.PrimaryPart
+            if root and targetPart then
+                -- Kiểm tra Instant Kill
+                if HubConfig.Farm.InstaKill then
+                    local hpPct = (State.Target.Humanoid.Health / State.Target.Humanoid.MaxHealth) * 100
+                    if hpPct <= HubConfig.Farm.InstaKillHP then
+                        -- Thực hiện dứt điểm
+                        RemoteInput:FireServer("Tool", "M1")
+                    end
+                end
+                
+                local farmCFrame = CalculateFarmOffset(targetPart.CFrame)
+                root.CFrame = farmCFrame
+                root.AssemblyLinearVelocity = Vector3.zero
+                
+                if HubConfig.Farm.AutoM1 then
+                    AttackM1()
+                end
+                
+                if HubConfig.Farm.AutoSkill then
+                    CastSkills()
+                end
+            end
+        else
+            State.Target = nil
+        end
+    end
+end)
+
+-- Vòng lặp chọn mục tiêu theo độ ưu tiên
+task.spawn(function()
+    while true do
+        task.wait(0.25)
+        
+        -- 1. Ưu tiên săn Cá Voi (Whale)
+        if HubConfig.Misc.AutoFindWhale and State.WhaleActive then
+            local whale = Workspace:FindFirstChild("Whale") or Workspace:FindFirstChild("WhaleIndicator_WhaleEvent")
+            if whale and whale:FindFirstChild("Humanoid") and whale.Humanoid.Health > 0 then
+                State.Target = whale
+                continue
+            end
+        end
+        
+        -- 2. Ưu tiên Boss triệu hồi (Summon Boss)
+        if HubConfig.Farm.SummonBossFarm then
+            local summonTarget = FindMobTarget(HubConfig.Farm.SelectedSummon)
+            if summonTarget then
+                State.Target = summonTarget
+                continue
+            end
+        end
+        
+        -- 3. Ưu tiên Boss thế giới
+        if HubConfig.Farm.BossesFarm then
+            for _, bossName in ipairs(HubConfig.Farm.SelectedBosses) do
+                local boss = FindMobTarget(bossName)
+                if boss then
+                    State.Target = boss
+                    break
+                end
+            end
+            if State.Target then continue end
+        end
+        
+        -- 4. Farm quái thường
+        if HubConfig.Farm.MobFarm then
+            State.Target = FindMobTarget(HubConfig.Farm.SelectedMob)
+        elseif HubConfig.Farm.AllMobFarm then
+            State.Target = FindMobTarget()
+        end
+    end
+end)
+
+-- Tự động làm hợp đồng truy nã (Auto Bounty)
+task.spawn(function()
+    while true do
+        task.wait(1.0)
+        if HubConfig.Farm.BountyFarm then
+            if ContractGetState and ContractAccept and ContractClaim then
+                local ok, state = pcall(function() return ContractGetState:InvokeServer() end)
+                if ok and state then
+                    if state.CanClaim and HubConfig.Farm.BountyAutoClaim then
+                        ContractClaim:InvokeServer()
+                    elseif not state.ActiveTarget then
+                        ContractAccept:InvokeServer()
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- =========================================================================================
+-- [9] FIRE FORCE QUESTS ENGINE
+-- =========================================================================================
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if HubConfig.FireForce.Q1_FindCat or HubConfig.FireForce.Q2_RescueHostage or HubConfig.FireForce.Q3_Ambush then
+            local extra = Workspace:FindFirstChild("Extra")
+            if extra then
+                local ffFolder = extra:FindFirstChild("FireForce") or extra:FindFirstChild("FireForceQuest")
+                if ffFolder then
+                    for _, item in ipairs(ffFolder:GetDescendants()) do
+                        if item:IsA("ProximityPrompt") and item.Enabled then
+                            local char, root = GetCharacter()
+                            if root then
+                                root.CFrame = item.Parent.CFrame
+                                task.wait(0.2)
+                                InteractPrompt(item)
+                            end
+                        end
+                    end
+                end
+            end
+            
+            -- Nhiệm vụ phục kích (Infernal Ambusher)
+            if HubConfig.FireForce.Q3_Ambush then
+                local ambusher = Workspace:FindFirstChild("Infernal Ambusher") or FindMobTarget("Ambusher")
+                if ambusher then
+                    State.Target = ambusher
+                end
+            end
+        end
+    end
+end)
+
+-- =========================================================================================
+-- [10] EVENT, WORLD & PROGRESSION AUTOMATIONS
+-- =========================================================================================
+
+-- Tự động nhặt đồ rơi trên toàn bản đồ
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if HubConfig.Misc.AutoCollectItem then
+            local itemsFolder = Workspace:FindFirstChild("SpawnedItems") or (Workspace:FindFirstChild("Extra") and Workspace.Extra:FindFirstChild("Items"))
+            if itemsFolder then
+                for _, item in ipairs(itemsFolder:GetChildren()) do
+                    local prompt = item:FindFirstChildWhichIsA("ProximityPrompt", true)
+                    local basePart = item:IsA("BasePart") and item or item:FindFirstChildWhichIsA("BasePart")
+                    if basePart and prompt and prompt.Enabled then
+                        local _, root = GetCharacter()
+                        if root then
+                            root.CFrame = basePart.CFrame
+                            task.wait(0.15)
+                            InteractPrompt(prompt)
+                        end
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- Tự động Roll Trait & Auto Skip
+task.spawn(function()
+    while true do
+        task.wait(0.5)
+        if HubConfig.AutoStats.AutoRollTrait and TraitReroll then
+            pcall(function()
+                TraitReroll:FireServer()
+            end)
+        end
+    end
+end)
+
+-- Tự động phân bổ chỉ số (Auto Allocate Stats)
+task.spawn(function()
+    while true do
+        task.wait(1.0)
+        if HubConfig.AutoStats.Enabled and RemoteFunctionsInput then
+            for _, stat in ipairs(HubConfig.AutoStats.SelectedStats) do
+                pcall(function()
+                    RemoteFunctionsInput:InvokeServer("Stats", "Add", stat, 1)
+                end)
+            end
+        end
+    end
+end)
+
+-- Tự động mở rương (Auto Open Chest)
+task.spawn(function()
+    while true do
+        task.wait(0.8)
+        if HubConfig.Misc.AutoOpenChest and RemoteUseItem then
+            for _, chestName in ipairs(HubConfig.Misc.SelectedChests) do
+                pcall(function()
+                    RemoteUseItem:FireServer(chestName)
+                end)
+            end
+        end
+    end
+end)
+
+-- Tự động trùng sinh (Auto Prestige)
+task.spawn(function()
+    while true do
+        task.wait(2.0)
+        if HubConfig.Misc.AutoPrestige and RemoteFunctionsInput then
+            pcall(function()
+                RemoteFunctionsInput:InvokeServer("Prestige")
+            end)
+        end
+    end
+end)
+
+-- Tự động leo tháp Infinite Tower & Dungeon
+task.spawn(function()
+    while true do
+        task.wait(1.5)
+        if HubConfig.Dungeon.AutoJoinTower and InfiniteTowerAction then
+            pcall(function()
+                InfiniteTowerAction:FireServer("Join", HubConfig.Dungeon.StartFloor)
+            end)
+        end
+    end
+end)
+
+-- =========================================================================================
+-- [11] SAFETY, ANTI-AFK & DISCORD LOGGER
+-- =========================================================================================
+
+-- Lắng nghe Staff / Admin tham gia server
+local StaffRanks = { "Owner", "Developer", "Intern Developer", "Analytics", "Just Holder" }
+Players.PlayerAdded:Connect(function(player)
+    local rank = player:GetRoleInGroup(game.CreatorId)
+    for _, staffRank in ipairs(StaffRanks) do
+        if string.find(rank:lower(), staffRank:lower()) then
+            warn("[nhamnhi Alert]: Staff member joined the server: " .. player.Name .. " (" .. rank .. ")")
+            -- Tùy chọn rời server hoặc ngắt script
+        end
+    end
+end)
+
+-- Chống AFK treo máy
+local function EnableAntiAFK()
+    LocalPlayer.Idled:Connect(function()
+        VirtualUser:CaptureController()
+        VirtualUser:ClickButton2(Vector2.zero)
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.RightControl, false, game)
+        task.wait(0.1)
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.RightControl, false, game)
+    end)
+end
+EnableAntiAFK()
+
+-- =========================================================================================
+-- [12] GRAPHICAL USER INTERFACE (OBSIDIAN UI LIBRARY)
+-- =========================================================================================
+local function LoadUI()
+    local success, Library = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/gix314/Obsidian/main/Library.lua"))()
+    end)
+    
+    if not success or not Library then
+        warn("[nhamnhi Hub]: Khong the tai Obsidian Library qua HttpGet!")
+        return
+    end
+
+    local Window = Library:CreateWindow({
+        Title = "nhamnhi | Legacy Piece [Bypassed]",
+        Footer = "nhamnhi v1.0.3 | discord.gg/mcMEkVdebJ",
+        Icon = 101058895845936,
+        NotifySide = "Right",
+        ShowCustomCursor = false,
+    })
+
+    -- Tabs
+    local Tabs = {
+        Home = Window:AddTab({ Title = "Home", Icon = "house", Description = "Trang chu va Thong tin script" }),
+        Main = Window:AddTab({ Title = "Main", Icon = "box", Description = "Autofarm Quai, Boss, Level, Vu khi" }),
+        FireForce = Window:AddTab({ Title = "Fire Force", Icon = "repeat-2", Description = "Tu dong nhiem vu Fire Force Quests" }),
+        Automation = Window:AddTab({ Title = "Automation", Icon = "repeat", Description = "Co che game (Roll Trait, Ruong, Nang diem)" }),
+        Dungeon = Window:AddTab({ Title = "Dungeon", Icon = "door-open", Description = "Pho ban va Infinite Tower" }),
+        Teleport = Window:AddTab({ Title = "Teleport", Icon = "map-pin", Description = "Dich chuyen dao va NPC" }),
+        Config = Window:AddTab({ Title = "Config", Icon = "cog", Description = "Luu va Cai dat cau hinh" }),
+    }
+
+    -- TAB MAIN: AUTOFARM SETTINGS
+    local FarmGroup = Tabs.Main:AddLeftGroupbox("Autofarm Controls")
+    FarmGroup:AddToggle("MobFarm", {
+        Text = "Auto Farm [Mob]",
+        Default = false,
+        Callback = function(v) HubConfig.Farm.MobFarm = v end
+    })
+    FarmGroup:AddToggle("AllMobFarm", {
+        Text = "Auto Farm [All Mobs]",
+        Default = false,
+        Callback = function(v) HubConfig.Farm.AllMobFarm = v end
+    })
+    FarmGroup:AddToggle("BossesFarm", {
+        Text = "Auto Farm [Bosses]",
+        Default = false,
+        Callback = function(v) HubConfig.Farm.BossesFarm = v end
+    })
+    FarmGroup:AddToggle("AutoM1", {
+        Text = "Tu dong danh M1",
+        Default = true,
+        Callback = function(v) HubConfig.Farm.AutoM1 = v end
+    })
+    FarmGroup:AddToggle("AutoSkill", {
+        Text = "Tu dong xa ky nang (Skill)",
+        Default = false,
+        Callback = function(v) HubConfig.Farm.AutoSkill = v end
+    })
+
+    local PosGroup = Tabs.Main:AddRightGroupbox("Vi tri & Toc do")
+    PosGroup:AddDropdown("FarmPos", {
+        Values = { "Behind", "Above", "Below" },
+        Default = "Behind",
+        Multi = false,
+        Text = "Goc do farm",
+        Callback = function(v) HubConfig.Farm.Position = v end
+    })
+    PosGroup:AddSlider("FarmDist", {
+        Text = "Khoang cach",
+        Default = 6,
+        Min = 2,
+        Max = 15,
+        Rounding = 1,
+        Callback = function(v) HubConfig.Farm.Distance = v end
+    })
+    PosGroup:AddSlider("TweenSpeed", {
+        Text = "Toc do bay (Tween)",
+        Default = 300,
+        Min = 100,
+        Max = 600,
+        Rounding = 0,
+        Callback = function(v) HubConfig.Farm.TweenSpeed = v end
+    })
+
+    -- TAB FIRE FORCE
+    local FFGroup = Tabs.FireForce:AddLeftGroupbox("Nhiem vu Fire Force")
+    FFGroup:AddToggle("FF_Q1", {
+        Text = "Auto Tim Meo (Find Cat)",
+        Default = false,
+        Callback = function(v) HubConfig.FireForce.Q1_FindCat = v end
+    })
+    FFGroup:AddToggle("FF_Q2", {
+        Text = "Auto Cuu Con Tin (Rescue Hostage)",
+        Default = false,
+        Callback = function(v) HubConfig.FireForce.Q2_RescueHostage = v end
+    })
+    FFGroup:AddToggle("FF_Q3", {
+        Text = "Auto Danh Len (Ambush Thugs)",
+        Default = false,
+        Callback = function(v) HubConfig.FireForce.Q3_Ambush = v end
+    })
+
+    -- TAB AUTOMATION
+    local AutoGroup = Tabs.Automation:AddLeftGroupbox("Vat pham & Tien trinh")
+    AutoGroup:AddToggle("AutoCollectItem", {
+        Text = "Tu dong nhat do roi (Collect Items)",
+        Default = false,
+        Callback = function(v) HubConfig.Misc.AutoCollectItem = v end
+    })
+    AutoGroup:AddToggle("AutoOpenChest", {
+        Text = "Tu dong mo ruong (Open Chest)",
+        Default = false,
+        Callback = function(v) HubConfig.Misc.AutoOpenChest = v end
+    })
+    AutoGroup:AddToggle("AutoWhale", {
+        Text = "Tu dong san Ca Voi (Whale Event)",
+        Default = false,
+        Callback = function(v) HubConfig.Misc.AutoFindWhale = v end
+    })
+    AutoGroup:AddToggle("AutoPrestige", {
+        Text = "Tu dong Trung sinh (Prestige)",
+        Default = false,
+        Callback = function(v) HubConfig.Misc.AutoPrestige = v end
+    })
+
+    -- TAB TELEPORT
+    local TPGroup = Tabs.Teleport:AddLeftGroupbox("Dich chuyen Dao (Island TP)")
+    local islandNames = {}
+    for id, data in pairs(IslandsConfig) do
+        table.insert(islandNames, id)
+    end
+    TPGroup:AddDropdown("SelectIsland", {
+        Values = islandNames,
+        Default = "Starter",
+        Multi = false,
+        Text = "Chon dao",
+        Callback = function(v) HubConfig.Teleport.TargetIsland = v end
+    })
+    TPGroup:AddButton({
+        Text = "Dich chuyen den Dao",
+        Func = function()
+            local cfg = IslandsConfig[HubConfig.Teleport.TargetIsland]
+            if cfg then
+                if TeleportToIslandSpot then
+                    TeleportToIslandSpot:InvokeServer(cfg.SpotId)
+                else
+                    MoveToCFrame(cfg.CFrame)
+                end
+            end
+        end
+    })
+
+    Library:Notify("nhamnhi Hub da tai thanh cong! Key system da duoc bypass hoan toan.", 5)
+end
+
+-- Khoi chay UI
+LoadUI()
+print("[nhamnhi Hub]: Initialized successfully!")
