@@ -1,40 +1,83 @@
-﻿# ⚡ Mhnaa Hub & UX/UI Library
+﻿# ⚡ Mhnaa Hub & Roblox Scripts Collection
 
-Repository chứa thư viện giao diện **MhnaaUI** và Script tự động **Mhnaa Hub [PRO-MULTI]** chuyên biệt cho game **[Bleach!] Legacy Piece** trên Roblox.
+Repository chứa trọn bộ các Script tự động (Autofarm, Kill Aura, Dungeon Quest), thư viện giao diện **MhnaaUI** và Script chính **nhamnhi Hub [PRO-MULTI]** cho **[Bleach!] Legacy Piece** trên Roblox.
 
 ---
 
-## 🚀 Quick Loadstring (Chạy ngay trong Roblox Executor)
+## 🚀 Quick Loadstrings (Chạy ngay trong Roblox Executor)
 
-### 1. Mhnaa Hub [PRO-MULTI] (Script Legacy Piece)
-Tự động cộng điểm (Auto Stat), tự động chuyển đảo, tự động hủy & nhận quest theo cấp (0 - 9,300+), Tween farm quái 3D, Combo Skill, Auto Fishing & Anti-Lag:
+### 1. nhamnhi Hub - Legacy Piece (v1.0.3 Bypassed)
+Tự động farm quái, farm boss & tự động triệu hồi boss qua cổng Portal chống rubberband, nhiệm vụ Fire Force, tự nhặt đồ & rương, Infinite Tower, combo kỹ năng qua Remote trực tiếp:
 
-`lua
+```lua
 loadstring(game:HttpGet("https://raw.githubusercontent.com/Mhna3112/Mhnauxui/main/Main_Project_UI.luau"))()
-`
+```
 
-*(Hoặc link rút gọn alias)*:
-`lua
+*(Hoặc link alias rút gọn)*:
+```lua
 loadstring(game:HttpGet("https://raw.githubusercontent.com/Mhna3112/Mhnauxui/main/LegacyPiece.luau"))()
-`
+```
 
 ---
 
 ### 2. MhnaaUI (Thư viện UX/UI mã nguồn mở)
 Thư viện UI hiện đại, mượt mà, hỗ trợ đa dạng component (Tab, Section, Toggle, Slider, Dropdown, Keybind, ColorPicker, Button):
 
-`lua
+```lua
 local MhnaaUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Mhna3112/Mhnauxui/main/MhnaaUI.luau"))()
-`
+```
 
 ---
 
-## ✨ Tính Năng Nổi Bật của Mhnaa Hub
+### 3. Dungeon Quest AutoFarm
+Hỗ trợ tự động chạy Dungeon, thu thập kinh nghiệm và phần thưởng:
 
-- ⚡ **Auto Stat**: Tự động phát hiện Points dư, cộng vào Weapon, Strength, Defense, Ability hoặc chia đều 4 chỉ số.
-- 🗺️ **Multi-Island Teleport**: Dùng cổng dịch chuyển chính thức của game, chuyển đảo tức thì, **100% không bị dính Gameplay Paused**.
-- 📜 **Auto Quest Progression**: Tự động hủy quest cũ lỗi thời khi lên cấp, di chuyển sang đảo mới và nhận quest phù hợp.
-- 🎯 **3D Farm Positions**: Tự do khóa góc đánh quanh quái: *Above* (trên đầu), *Beside* (bên cạnh), *Behind* (sau lưng), *Under* (độn thổ).
-- ⚔️ **Auto Attack & Skill Combo**: Đánh siêu nhanh, combo chiêu phím Z, X, C, V, E, R tùy chỉnh độ trễ.
-- 🎣 **Auto Fishing & Anti-AFK**: Tự động câu cá, tự cầm cần câu, chống bị kick sau 20 phút.
-- 🧊 **Tối ưu máy & Treo đêm**: Giảm lag đồ họa, hỗ trợ **Tắt Render 3D (GPU 0%)** giúp máy siêu mát khi cắm farm xuyên ngày đêm.
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Mhna3112/Mhnauxui/main/DungeonQuest_AutoFarm.luau"))()
+```
+
+---
+
+### 4. Kill Aura (Universal & Teleport)
+Tự động tấn công kẻ địch xung quanh hoặc dịch chuyển liên tục:
+
+```lua
+-- Kill Aura thường
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Mhna3112/Mhnauxui/main/killaura.luau"))()
+
+-- Kill Aura kèm Teleport
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Mhna3112/Mhnauxui/main/killaura_tp.luau"))()
+```
+
+---
+
+## 📂 Danh Sách Tệp Dự Án (Project Structure)
+
+| Tên Tệp | Mô Tả |
+|---|---|
+| `Main_Project_UI.luau` | Script chính Legacy Piece theo chuẩn nhamnhi Hub v1.0.3 (Obsidian UI) |
+| `LegacyPiece.luau` | Bản alias của `Main_Project_UI.luau` |
+| `MhnaaUI.luau` | Thư viện giao diện người dùng Mhnaa UI |
+| `DungeonQuest_AutoFarm.luau` | Script tự động cày cuốc phó bản Dungeon Quest |
+| `DungeonQuest_Mhnaa.luau` | Script Dungeon Quest tích hợp giao diện MhnaaUI |
+| `DungeonQuest_raw.lua` | Mã nguồn gốc Dungeon Quest |
+| `killaura.luau` | Script Kill Aura đa năng |
+| `killaura_tp.luau` | Script Kill Aura kết hợp dịch chuyển tức thời |
+| `autofarm.lua` | Script autofarm cơ bản |
+| `autofarm_instantclick.luau` | Script autofarm chế độ nhấp tức thời |
+| `autofarm_steal_egg.luau` | Script tự động trộm trứng (Steal Egg) |
+| `autofarm_steal_egg_obf.luau`| Bản mã hóa của Steal Egg |
+| `nhamnhi_legacy_piece_decompiled.luau` | Bản dịch ngược tái cấu trúc từ nhamnhi Hub v1.0.3 |
+| `junkie_sdk.luau` | Module mô phỏng bypass Key System Junkie SDK |
+| `Example_Template.luau` | Mẫu script khởi tạo giao diện |
+
+---
+
+## ✨ Tính Năng Nổi Bật
+
+- ⚡ **Combat Network Trực Tiếp**: M1 và combo chiêu thức Z, X, C, V, E gửi thẳng qua Remote Server của game, không delay chuột.
+- 🎯 **InstaKill Multi-Burst**: Xả $3\times$ đến $6\times$ chùm đòn đánh qua remote dứt điểm mục tiêu cực nhanh.
+- 🗺️ **Cổng Teleport An Toàn**: Dịch chuyển giữa 14 hòn đảo bằng cổng chính thức, triệt tiêu 100% tình trạng giật lùi (rubberband).
+- 🐉 **Auto Summon Boss**: Tự động bay đến NPC Whisperer / Sacrifice Table triệu hồi Boss và farm liên tục.
+- 🚒 **Fire Force Quest**: Tự động tìm mèo, cứu con tin, hạ gục Infernal Ambusher.
+- 📦 **Tự Nhặt Vật Phẩm & Rương**: Quét và nhặt tức thì mọi item / rương trên bản đồ.

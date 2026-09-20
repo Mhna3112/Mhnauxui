@@ -1,0 +1,10 @@
+﻿*.bin
+*.log
+*.tmp
+dump_*.txt
+proto5859_*.txt
+scratch_*
+stage1_*
+test_*
+unpacked_*
+lemon-peach.lua
