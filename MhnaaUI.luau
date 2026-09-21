@@ -216,6 +216,11 @@ function MhnaaUI:CreateWindow(opt)
     MainStroke.Thickness = 1.2
     MainStroke.Parent = MainFrame
 
+    local MainScale = Instance.new("UIScale")
+    MainScale.Name = "MainScale"
+    MainScale.Scale = 1.0
+    MainScale.Parent = MainFrame
+
     -- TOPBAR
     local Topbar = Instance.new("Frame")
     Topbar.Name = "Topbar"
@@ -303,7 +308,7 @@ function MhnaaUI:CreateWindow(opt)
     -- SEARCH BAR (With Ctrl+K badge as in screenshot)
     local SearchContainer = Instance.new("Frame")
     SearchContainer.Name = "SearchContainer"
-    SearchContainer.Size = UDim2.new(1, -290, 0, 30)
+    SearchContainer.Size = UDim2.new(1, -315, 0, 30)
     SearchContainer.Position = UDim2.new(0, 230, 0.5, -15)
     SearchContainer.BackgroundColor3 = MhnaaUI.CurrentTheme.InputBackground
     SearchContainer.BorderSizePixel = 0
@@ -373,12 +378,31 @@ function MhnaaUI:CreateWindow(opt)
     -- Window Controls (Minimize & Close)
     local WindowControls = Instance.new("Frame")
     WindowControls.Name = "WindowControls"
-    WindowControls.Size = UDim2.new(0, 48, 1, 0)
-    WindowControls.Position = UDim2.new(1, -52, 0, 0)
+    WindowControls.Size = UDim2.new(0, 70, 1, 0)
+    WindowControls.Position = UDim2.new(1, -74, 0, 0)
     WindowControls.BackgroundTransparency = 1
     WindowControls.Parent = Topbar
 
+    local MinimizeBtn = Instance.new("TextButton")
+    MinimizeBtn.Name = "MinimizeBtn"
+    MinimizeBtn.Size = UDim2.new(0, 22, 0, 22)
+    MinimizeBtn.Position = UDim2.new(0, 6, 0.5, -11)
+    MinimizeBtn.BackgroundTransparency = 1
+    MinimizeBtn.Font = Enum.Font.GothamBold
+    MinimizeBtn.Text = "—"
+    MinimizeBtn.TextColor3 = MhnaaUI.CurrentTheme.TextMuted
+    MinimizeBtn.TextSize = 15
+    MinimizeBtn.Parent = WindowControls
+
+    MinimizeBtn.MouseEnter:Connect(function()
+        tween(MinimizeBtn, TweenInfo.new(0.15), {TextColor3 = Color3.fromRGB(180, 200, 255)})
+    end)
+    MinimizeBtn.MouseLeave:Connect(function()
+        tween(MinimizeBtn, TweenInfo.new(0.15), {TextColor3 = MhnaaUI.CurrentTheme.TextMuted})
+    end)
+
     local CloseBtn = Instance.new("TextButton")
+    CloseBtn.Name = "CloseBtn"
     CloseBtn.Size = UDim2.new(0, 22, 0, 22)
     CloseBtn.Position = UDim2.new(1, -26, 0.5, -11)
     CloseBtn.BackgroundTransparency = 1
@@ -398,7 +422,7 @@ function MhnaaUI:CreateWindow(opt)
         MainFrame.Visible = false
         MhnaaUI:Notify({
             Title = Title,
-            Content = "UI Hidden. Press " .. ToggleKey.Name .. " to open again.",
+            Content = "UI Hidden. Press " .. ToggleKey.Name .. " or click the floating widget to open.",
             Duration = 3
         })
     end)
@@ -532,6 +556,203 @@ function MhnaaUI:CreateWindow(opt)
         return point.X >= absPos.X and point.X <= (absPos.X + absSize.X) and point.Y >= absPos.Y and point.Y <= (absPos.Y + absSize.Y)
     end
 
+    -- MINIMIZE & SIDEBAR COLLAPSE STATE
+    local isMinimized = false
+    local savedSize = WindowSize
+    local isSidebarCollapsed = false
+    local minToggleRef = nil
+    local sidebarToggleRef = nil
+
+    local function setSidebarCollapsed(collapsed)
+        isSidebarCollapsed = collapsed
+        if isSidebarCollapsed then
+            BackArrowBtn.Text = "›"
+            tween(Sidebar, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                Size = UDim2.new(0, 0, 1, -46)
+            })
+            tween(ContentArea, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                Position = UDim2.new(0, 0, 0, 46),
+                Size = UDim2.new(1, 0, 1, -46)
+            })
+            task.delay(0.22, function()
+                if isSidebarCollapsed then
+                    Sidebar.Visible = false
+                end
+            end)
+        else
+            Sidebar.Visible = true
+            BackArrowBtn.Text = "‹"
+            tween(Sidebar, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                Size = UDim2.new(0, 180, 1, -46)
+            })
+            tween(ContentArea, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                Position = UDim2.new(0, 180, 0, 46),
+                Size = UDim2.new(1, -180, 1, -46)
+            })
+        end
+        if sidebarToggleRef and sidebarToggleRef.Set then
+            sidebarToggleRef:Set(isSidebarCollapsed)
+        end
+    end
+
+    BackArrowBtn.MouseEnter:Connect(function()
+        tween(BackArrowBtn, TweenInfo.new(0.15), {TextColor3 = Color3.fromRGB(255, 255, 255)})
+    end)
+    BackArrowBtn.MouseLeave:Connect(function()
+        tween(BackArrowBtn, TweenInfo.new(0.15), {TextColor3 = MhnaaUI.CurrentTheme.SidebarText})
+    end)
+    BackArrowBtn.MouseButton1Click:Connect(function()
+        setSidebarCollapsed(not isSidebarCollapsed)
+    end)
+
+    local function toggleMinimize(forceState)
+        local targetState = forceState
+        if targetState == nil then
+            targetState = not isMinimized
+        end
+        if targetState == isMinimized then return end
+        isMinimized = targetState
+
+        if isMinimized then
+            savedSize = MainFrame.Size
+            MinimizeBtn.Text = "□"
+            Sidebar.Visible = false
+            ContentArea.Visible = false
+            ResizeHandle.Visible = false
+            SearchContainer.Visible = false
+            PipeDivider.Visible = false
+            BackArrowBtn.Visible = false
+            TopbarDivider.Visible = false
+            TopbarSquareFix.Visible = false
+            tween(MainFrame, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                Size = UDim2.new(0, 250, 0, 46)
+            })
+        else
+            MinimizeBtn.Text = "—"
+            if not isSidebarCollapsed then
+                Sidebar.Visible = true
+            end
+            ContentArea.Visible = true
+            ResizeHandle.Visible = true
+            SearchContainer.Visible = true
+            PipeDivider.Visible = true
+            BackArrowBtn.Visible = true
+            TopbarDivider.Visible = true
+            TopbarSquareFix.Visible = true
+            tween(MainFrame, TweenInfo.new(0.22, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+                Size = savedSize
+            })
+        end
+
+        if minToggleRef and minToggleRef.Set then
+            minToggleRef:Set(isMinimized)
+        end
+    end
+
+    MinimizeBtn.MouseButton1Click:Connect(function()
+        toggleMinimize()
+    end)
+
+    -- ═══════════════════════════════════════════════════════════════════════
+    -- 🐰 FLOATING MINI TOGGLE WIDGET
+    -- ═══════════════════════════════════════════════════════════════════════
+    local MiniToggle = Instance.new("TextButton")
+    MiniToggle.Name = "MiniToggle"
+    MiniToggle.Size = UDim2.new(0, 110, 0, 34)
+    MiniToggle.Position = UDim2.new(0, 20, 0.5, -17)
+    MiniToggle.BackgroundColor3 = MhnaaUI.CurrentTheme.CardBackground
+    MiniToggle.BorderSizePixel = 0
+    MiniToggle.AutoButtonColor = false
+    MiniToggle.Text = ""
+    MiniToggle.Visible = true
+    MiniToggle.Parent = ScreenGui
+
+    local MiniCorner = Instance.new("UICorner")
+    MiniCorner.CornerRadius = UDim.new(0, 8)
+    MiniCorner.Parent = MiniToggle
+
+    local MiniStroke = Instance.new("UIStroke")
+    MiniStroke.Color = MhnaaUI.CurrentTheme.CardBorder
+    MiniStroke.Thickness = 1.2
+    MiniStroke.Parent = MiniToggle
+
+    local MiniIcon = Instance.new("TextLabel")
+    MiniIcon.Size = UDim2.new(0, 24, 1, 0)
+    MiniIcon.Position = UDim2.new(0, 8, 0, 0)
+    MiniIcon.BackgroundTransparency = 1
+    MiniIcon.Font = Enum.Font.GothamBold
+    MiniIcon.Text = "🐰"
+    MiniIcon.TextSize = 14
+    MiniIcon.Parent = MiniToggle
+
+    local MiniLabel = Instance.new("TextLabel")
+    MiniLabel.Size = UDim2.new(1, -36, 1, 0)
+    MiniLabel.Position = UDim2.new(0, 32, 0, 0)
+    MiniLabel.BackgroundTransparency = 1
+    MiniLabel.Font = Enum.Font.GothamBold
+    MiniLabel.Text = Title
+    MiniLabel.TextColor3 = Color3.fromRGB(240, 240, 245)
+    MiniLabel.TextSize = 11
+    MiniLabel.TextXAlignment = Enum.TextXAlignment.Left
+    MiniLabel.Parent = MiniToggle
+
+    local miniDragging = false
+    local miniDragStart = nil
+    local miniStartPos = nil
+    local miniMoved = false
+
+    MiniToggle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            miniDragging = true
+            miniMoved = false
+            miniDragStart = input.Position
+            miniStartPos = MiniToggle.Position
+
+            local conn
+            conn = input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    miniDragging = false
+                    if conn then conn:Disconnect() end
+                end
+            end)
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if miniDragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            local delta = input.Position - miniDragStart
+            if delta.Magnitude > 3 then
+                miniMoved = true
+            end
+            MiniToggle.Position = UDim2.new(
+                miniStartPos.X.Scale,
+                miniStartPos.X.Offset + delta.X,
+                miniStartPos.Y.Scale,
+                miniStartPos.Y.Offset + delta.Y
+            )
+        end
+    end)
+
+    MiniToggle.MouseEnter:Connect(function()
+        tween(MiniStroke, TweenInfo.new(0.15), {Color = MhnaaUI.CurrentTheme.Accent})
+        tween(MiniToggle, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(32, 32, 38)})
+    end)
+    MiniToggle.MouseLeave:Connect(function()
+        tween(MiniStroke, TweenInfo.new(0.15), {Color = MhnaaUI.CurrentTheme.CardBorder})
+        tween(MiniToggle, TweenInfo.new(0.15), {BackgroundColor3 = MhnaaUI.CurrentTheme.CardBackground})
+    end)
+
+    MiniToggle.MouseButton1Click:Connect(function()
+        if not miniMoved then
+            if isMinimized then
+                toggleMinimize(false)
+                MainFrame.Visible = true
+            else
+                MainFrame.Visible = not MainFrame.Visible
+            end
+        end
+    end)
+
     -- DRAGGING LOGIC (Smooth dragging from Topbar)
     local dragging = false
     local dragStart = nil
@@ -540,9 +761,9 @@ function MhnaaUI:CreateWindow(opt)
     Topbar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             local pos = input.Position
-            local onSearch = isPointInside(SearchContainer, pos)
+            local onSearch = SearchContainer.Visible and isPointInside(SearchContainer, pos)
             local onControls = isPointInside(WindowControls, pos)
-            local onBack = isPointInside(BackArrowBtn, pos)
+            local onBack = BackArrowBtn.Visible and isPointInside(BackArrowBtn, pos)
 
             if not onSearch and not onControls and not onBack then
                 dragging = true
@@ -576,11 +797,12 @@ function MhnaaUI:CreateWindow(opt)
                 startPos.Y.Scale,
                 startPos.Y.Offset + delta.Y
             )
-        elseif resizing and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        elseif resizing and not isMinimized and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
             local delta = input.Position - resizeStart
             local newWidth = math.max(540, startSize.X + delta.X)
             local newHeight = math.max(340, startSize.Y + delta.Y)
             MainFrame.Size = UDim2.new(0, newWidth, 0, newHeight)
+            savedSize = MainFrame.Size
         end
     end)
 
@@ -598,6 +820,9 @@ function MhnaaUI:CreateWindow(opt)
         ScreenGui = ScreenGui,
         MainFrame = MainFrame,
         ContentArea = ContentArea,
+        Sidebar = Sidebar,
+        MainScale = MainScale,
+        MiniToggle = MiniToggle,
         Tabs = {},
         TabButtons = {},
         ActiveTab = nil,
@@ -608,6 +833,28 @@ function MhnaaUI:CreateWindow(opt)
         end,
         SetToggleKey = function(self, newKey)
             ToggleKey = newKey
+        end,
+        SetScale = function(self, scaleVal)
+            local clamped = math.clamp(tonumber(scaleVal) or 1.0, 0.4, 1.5)
+            MainScale.Scale = clamped
+        end,
+        GetScale = function(self)
+            return MainScale.Scale
+        end,
+        ToggleMinimize = function(self)
+            toggleMinimize()
+        end,
+        SetMinimized = function(self, state)
+            toggleMinimize(state)
+        end,
+        IsMinimized = function(self)
+            return isMinimized
+        end,
+        ToggleSidebar = function(self)
+            setSidebarCollapsed(not isSidebarCollapsed)
+        end,
+        SetSidebarCollapsed = function(self, state)
+            setSidebarCollapsed(state)
         end
     }
 
@@ -1701,7 +1948,70 @@ function MhnaaUI:CreateWindow(opt)
         tween(SettingBtn, TweenInfo.new(0.18), {TextColor3 = Color3.fromRGB(255, 255, 255)})
     end)
 
-    SettingTab:CreateSection("INTERFACE PREFERENCES")
+    SettingTab:CreateSection("GIAO DIỆN & THU NHỎ (UI / UX)")
+
+    -- 1. UI Scale Slider (Thu nhỏ / Phóng to UI)
+    SettingTab:CreateSlider({
+        Title = "Kích Thước Giao Diện (UI Scale)",
+        Min = 0.5,
+        Max = 1.3,
+        Default = 1.0,
+        Decimals = 2,
+        Suffix = "x",
+        Callback = function(val)
+            Window:SetScale(val)
+        end
+    })
+
+    -- 2. Compact / Minimized Bar Toggle
+    minToggleRef = SettingTab:CreateToggle({
+        Title = "Thu Gọn Tiêu Đề (Compact Mode)",
+        Description = "Thu nhỏ giao diện thành thanh tiêu đề nhỏ gọn 250px",
+        Default = false,
+        Callback = function(val)
+            if val ~= isMinimized then
+                toggleMinimize(val)
+            end
+        end
+    })
+
+    -- 3. Collapse Sidebar Toggle
+    sidebarToggleRef = SettingTab:CreateToggle({
+        Title = "Thu Nhỏ Thanh Bên (Collapse Sidebar)",
+        Description = "Ẩn thanh tab bên trái để mở rộng tối đa diện tích hiển thị",
+        Default = false,
+        Callback = function(val)
+            if val ~= isSidebarCollapsed then
+                setSidebarCollapsed(val)
+            end
+        end
+    })
+
+    -- 4. Floating Mini Button Widget
+    SettingTab:CreateToggle({
+        Title = "Nút Thu Nhỏ Nổi (Floating Widget)",
+        Description = "Hiển thị nút tròn/pill '🐰 " .. Title .. "' để mở nhanh menu trên màn hình",
+        Default = true,
+        Callback = function(val)
+            MiniToggle.Visible = val
+        end
+    })
+
+    SettingTab:CreateSection("HỆ THỐNG")
+
+    SettingTab:CreateButton({
+        Title = "Phím Tắt Menu: " .. ToggleKey.Name,
+        Description = "Bấm phím " .. ToggleKey.Name .. " trên bàn phím để Ẩn / Hiện giao diện",
+        ButtonText = "HOTKEY",
+        Callback = function()
+            MhnaaUI:Notify({
+                Title = "Phím Tắt Menu",
+                Content = "Nhấn " .. ToggleKey.Name .. " trên bàn phím để Bật/Tắt giao diện.",
+                Duration = 3
+            })
+        end
+    })
+
     SettingTab:CreateButton({
         Title = "Close / Unload UI",
         Description = "Safely destroys the entire user interface and listeners",
