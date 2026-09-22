@@ -1,4 +1,4 @@
-﻿# ⚡ Mhnaa Hub & Roblox Scripts Collection
+# ⚡ Mhnaa Hub & Roblox Scripts Collection
 
 Repository chứa trọn bộ các Script tự động (Autofarm, Kill Aura, Dungeon Quest), thư viện giao diện **MhnaaUI** và Script chính **nhamnhi Hub [PRO-MULTI]** cho **[Bleach!] Legacy Piece** trên Roblox.
 
@@ -38,7 +38,16 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/Mhna3112/Mhnauxui/mai
 
 ---
 
-### 4. Kill Aura (Universal & Teleport)
+### 4. Untitled Upgrade Tree AutoFarm (Mhnaa [PRO])
+Tự động mua nâng cấp theo logic giá InfMaths, Turbo Auto Clicker, Auto Battle Stage, Auto Roll dừng theo tỷ lệ hiếm, tự động mở khóa điều kiện và Loop / Supernova / Bigbang:
+
+```lua
+loadstring(game:HttpGet("https://raw.githubusercontent.com/Mhna3112/Mhnauxui/main/UntitledUpgradeTree.luau"))()
+```
+
+---
+
+### 5. Kill Aura (Universal & Teleport)
 Tự động tấn công kẻ địch xung quanh hoặc dịch chuyển liên tục:
 
 ```lua
@@ -55,6 +64,8 @@ loadstring(game:HttpGet("https://raw.githubusercontent.com/Mhna3112/Mhnauxui/mai
 
 | Tên Tệp | Mô Tả |
 |---|---|
+| `UntitledUpgradeTree.luau` | Script tự động cày cuốc Untitled Upgrade Tree tích hợp MhnaaUI [PRO] |
+| `UntitledUpgradeTree/` | Thư mục chứa mã nguồn riêng cho Untitled Upgrade Tree |
 | `Main_Project_UI.luau` | Script chính Legacy Piece theo chuẩn nhamnhi Hub v1.0.3 (Obsidian UI) |
 | `LegacyPiece.luau` | Bản alias của `Main_Project_UI.luau` |
 | `MhnaaUI.luau` | Thư viện giao diện người dùng Mhnaa UI |
