@@ -93,25 +93,36 @@ local Config = {
     AutoBuyUpgrades = true,
     UpgradeDelay = 0.15,
     
-    -- Auto World Progression (Tự động mở map & điều kiện hands-free)
+    -- 🧠 SMART PRESTIGES ENGINE (TẤT CẢ THẾ GIỚI)
+    SmartPrestiges = true,
+    SmartPrestigeMultiplier = 2.5,
+    SmartTargetNextUpgrade = true,
+    SmartWaitBuyables = true,
+    
+    -- Toggles riêng từng loại Smart Prestige
+    SmartOverworldPrestige = true,
+    SmartOverworldEvil = true,
+    SmartDarkPrestige = true,
+    SmartDarkEvil = true,
+    SmartAntiPrestige = true,
+    SmartAntiEvil = true,
+    SmartTowerPrestige = true,
+    
+    -- Resets & Progression khác
     AutoUnlockWorlds = true,
-    AutoTeleportHighestWorld = true,
-    SmartAutoResets = true,
-    AutoPrestige = true,
-    AutoEvil = true,
     AutoLoop = true,
-    AutoDarkPrestige = true,
-    AutoDarkEvil = true,
     AutoToken = true,
-    AutoAntiPrestige = true,
-    AutoAntiEvil = true,
     AutoSupernova = true,
-    AutoTowerPrestige = true,
     AutoGodOffer = true,
     AutoBigbang = true,
     AutoAscend = true,
     AutoCycle = true,
     AutoRocketParts = true,
+    
+    -- World Navigation
+    AutoTeleportHighestWorld = false,
+    StayInCurrentWorld = true,
+    SelectedWorld = "AntiWorld",
     
     -- Combat & Minigames
     AutoBattle = true,
@@ -138,9 +149,6 @@ local Config = {
         ["Evil"] = false,
         ["Rich"] = false,
     },
-    
-    -- World Selected
-    SelectedWorld = "Spawn",
     
     -- Movement & Misc
     WalkSpeed = 16,
@@ -272,6 +280,118 @@ local function canBuyUpgrade(id)
     end)
 
     return okAfford and canAfford
+end
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- 🧠 SMART PRESTIGE ENGINE LOGIC (ALL WORLDS)
+-- ═══════════════════════════════════════════════════════════════════════════
+
+local function hasPrerequisites(def)
+    local upgFolder = LocalPlayer:FindFirstChild("Data") and LocalPlayer.Data:FindFirstChild("Upgrades")
+    if not upgFolder then return false end
+    
+    local unlockId = tonumber(def.Unlock)
+    if unlockId and unlockId ~= 0 then
+        local prereq = upgFolder:FindFirstChild(tostring(unlockId))
+        if not prereq or prereq.Value <= 0 then return false end
+    end
+    
+    local hasUnlockId = tonumber(def.HasUnlock)
+    if hasUnlockId and hasUnlockId ~= 0 then
+        local prereq = upgFolder:FindFirstChild(tostring(hasUnlockId))
+        if not prereq or prereq.Value <= 0 then return false end
+    end
+    
+    return true
+end
+
+local function getNextUpgradeTargetCost(currencyName)
+    local upgFolder = LocalPlayer:FindFirstChild("Data") and LocalPlayer.Data:FindFirstChild("Upgrades")
+    if not upgFolder or not InfMaths then return nil end
+    
+    local lowestReachableCost = nil
+    local lowestFallbackCost = nil
+    
+    for id = 1, #UpgradeDefs do
+        local def = UpgradeDefs[id]
+        if def and def.CurrencyCost == currencyName then
+            local curUpg = upgFolder:FindFirstChild(tostring(id))
+            local maxVal = type(def.Max) == "function" and def.Max(LocalPlayer, true) or def.Max
+            local val = curUpg and curUpg.Value or 0
+            if not maxVal or val < maxVal then
+                local priceStr = type(def.Price) == "function" and def.Price(LocalPlayer) or def.Price
+                if priceStr and priceStr ~= "" then
+                    local baseCost = InfMaths.parseAbbreviatedNumber(tostring(priceStr))
+                    local priceInc = tonumber(def.PriceInc) or 1
+                    local cost = (val == 0 or priceInc == 1) and baseCost or (baseCost * (InfMaths.new(tostring(priceInc)) ^ InfMaths.new(tostring(val))))
+                    
+                    if hasPrerequisites(def) then
+                        if not lowestReachableCost or cost < lowestReachableCost then
+                            lowestReachableCost = cost
+                        end
+                    else
+                        if not lowestFallbackCost or cost < lowestFallbackCost then
+                            lowestFallbackCost = cost
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    return lowestReachableCost or lowestFallbackCost
+end
+
+local function hasAffordableBuyables(currencyList)
+    if not currencyList then return false end
+    for _, cur in ipairs(currencyList) do
+        for id = 1, #UpgradeDefs do
+            local def = UpgradeDefs[id]
+            if def and def.CurrencyCost == cur and canBuyUpgrade(id) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function shouldTriggerSmartPrestige(currencyName, pendingAmount, currentAmount, primaryCurrencies)
+    if not pendingAmount or pendingAmount <= InfMaths.new("0") then
+        return false, "no_pending"
+    end
+    
+    -- 1. Nếu có upgrade đang mua được bằng tiền tệ hiện tại trong map, ưu tiên mua trước
+    if Config.SmartWaitBuyables and primaryCurrencies and hasAffordableBuyables(primaryCurrencies) then
+        return false, "waiting_for_buyables"
+    end
+    
+    -- 2. Tìm giá của Upgrade kế tiếp trong cây kỹ năng
+    local targetUpgradeCost = getNextUpgradeTargetCost(currencyName)
+    local totalAfterReset = currentAmount + pendingAmount
+    
+    -- Nếu đạt đủ mua Upgrade kế tiếp, reset ngay để lấy nâng cấp mới!
+    if Config.SmartTargetNextUpgrade and targetUpgradeCost then
+        if totalAfterReset >= targetUpgradeCost then
+            return true, "reached_next_upgrade"
+        end
+    end
+    
+    -- 3. Đánh giá theo Bội Số Thông Minh (Multiplier)
+    if currentAmount <= InfMaths.new("0") then
+        -- Khởi đầu thế giới: reset ngay khi đạt mốc tối thiểu để bắt đầu sản xuất
+        local minInitial = targetUpgradeCost or InfMaths.new("0.1")
+        if pendingAmount >= minInitial then
+            return true, "initial_bootstrap"
+        end
+    else
+        local mult = InfMaths.new(tostring(Config.SmartPrestigeMultiplier or 2.5))
+        local targetGain = currentAmount * mult
+        if pendingAmount >= targetGain then
+            return true, "multiplier_gain_reached"
+        end
+    end
+    
+    return false, "waiting_for_optimal_threshold"
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -434,7 +554,9 @@ task.spawn(function()
     end
 end)
 
--- 6. Auto Unlock Worlds & Smart Progression Engine (100% Hands-Free)
+---- 6. Auto Unlock Worlds & Smart Progression Engine (100% Hands-Free)
+local lastSeenReset = nil
+
 task.spawn(function()
     while _G.UUT_Mhnaa_Running do
         if Config.AutoUnlockWorlds then
@@ -444,43 +566,121 @@ task.spawn(function()
                 local otherUI = LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("OtherUI")
                 
                 if pd and Remotes then
-                    -- 1. Auto Highest World Navigation & Unlocking
+                    -- 1. Auto World Navigation (Chỉ chuyển khi thực sự có world mới mở khóa, không ép người chơi khi đang farm)
                     local highestWorldName, lastReset = getHighestUnlockedWorld()
-                    if Config.AutoTeleportHighestWorld and pd:FindFirstChild("WorldIn") then
-                        if pd.WorldIn.Value ~= highestWorldName then
-                            if Remotes:FindFirstChild("ChangeWorld") then
-                                Remotes.ChangeWorld:FireServer(highestWorldName)
-                                print(string.format("[Mhnaa [PRO]] 🌟 Tự động chuyển tới thế giới mới mở: %s (LastReset: %d)", highestWorldName, lastReset))
-                                MhnaaUI:Notify({
-                                    Title = "🌟 THẾ GIỚI MỚI ĐÃ MỞ KHÓA!",
-                                    Content = "Đã tự động dịch chuyển tới: " .. highestWorldName,
-                                    Duration = 4
-                                })
+                    if Config.AutoTeleportHighestWorld and not Config.StayInCurrentWorld then
+                        if lastSeenReset == nil then
+                            lastSeenReset = lastReset
+                        elseif lastReset > lastSeenReset then
+                            lastSeenReset = lastReset
+                            if pd:FindFirstChild("WorldIn") and pd.WorldIn.Value ~= highestWorldName then
+                                if Remotes:FindFirstChild("ChangeWorld") then
+                                    Remotes.ChangeWorld:FireServer(highestWorldName)
+                                    print(string.format("[Mhnaa [PRO]] 🌟 Tự động chuyển tới thế giới mới mở: %s (LastReset: %d)", highestWorldName, lastReset))
+                                    MhnaaUI:Notify({
+                                        Title = "🌟 THẾ GIỚI MỚI ĐÃ MỞ KHÓA!",
+                                        Content = "Đã tự động dịch chuyển tới: " .. highestWorldName,
+                                        Duration = 4
+                                    })
+                                end
                             end
                         end
                     end
                     
-                    -- 2. Smart Auto Prestige & Evil Resets (Fast & Frequent Gains)
-                    if Config.SmartAutoResets and ReadPlayerMulti and InfMaths then
-                        -- Prestige check
-                        if Config.AutoPrestige and Remotes:FindFirstChild("Prestige") then
-                            local pendingPP = ReadPlayerMulti.PlayerPrestigeCount(LocalPlayer)
-                            local currentPP = parseCurrency(pd:FindFirstChild("PrestigePoints") and pd.PrestigePoints.Value or "0")
-                            if pendingPP and (pendingPP > InfMaths.new("0")) then
-                                if currentPP < InfMaths.new("1e12") or pendingPP >= (currentPP * InfMaths.new("0.1")) then
-                                    Remotes.Prestige:FireServer()
+                    -- 2. 🧠 SMART PRESTIGES (ÁP DỤNG THÔNG MINH CHO TẤT CẢ THẾ GIỚI)
+                    if Config.SmartPrestiges and ReadPlayerMulti and InfMaths then
+                        -- A. Smart Anti-Prestige (Anti World)
+                        if Config.SmartAntiPrestige and Remotes:FindFirstChild("AntiPrestige") then
+                            if pd:FindFirstChild("UnlockedAntiPrestige") and pd.UnlockedAntiPrestige.Value == true then
+                                local pendingAPP = ReadPlayerMulti.PlayerAntiPrestigePointsCount and ReadPlayerMulti.PlayerAntiPrestigePointsCount(LocalPlayer)
+                                local currentAPP = parseCurrency(pd:FindFirstChild("AntiPrestigePoint") and pd.AntiPrestigePoint.Value or "0")
+                                local shouldReset, reason = shouldTriggerSmartPrestige("AntiPrestigePoint", pendingAPP, currentAPP, { "AntiPoint", "AntiLevelsToken" })
+                                if shouldReset then
+                                    Remotes.AntiPrestige:FireServer()
+                                    print(string.format("[Mhnaa [PRO]] ⚛️ Smart Anti-Prestige kích hoạt! (Lý do: %s | Nhận: %s APP$)", reason, tostring(pendingAPP)))
                                 end
                             end
                         end
                         
-                        -- Evil check
-                        if Config.AutoEvil and Remotes:FindFirstChild("Evil") then
-                            local pendingEP = ReadPlayerMulti.PlayerEvilCount(LocalPlayer)
-                            local currentEP = parseCurrency(pd:FindFirstChild("EvilPoints") and pd.EvilPoints.Value or "0")
-                            if pendingEP and (pendingEP > InfMaths.new("0")) then
-                                if currentEP < InfMaths.new("1e12") or pendingEP >= (currentEP * InfMaths.new("0.1")) then
-                                    Remotes.Evil:FireServer()
+                        -- B. Smart Anti-Evil (Anti World)
+                        if Config.SmartAntiEvil and Remotes:FindFirstChild("AntiEvil") then
+                            if pd:FindFirstChild("UnlockedAntiEvil") and pd.UnlockedAntiEvil.Value == true then
+                                local pendingAEP = ReadPlayerMulti.PlayerAntiEvilPointsCount and ReadPlayerMulti.PlayerAntiEvilPointsCount(LocalPlayer)
+                                local currentAEP = parseCurrency(pd:FindFirstChild("AntiEvilPoint") and pd.AntiEvilPoint.Value or "0")
+                                local shouldReset, reason = shouldTriggerSmartPrestige("AntiEvilPoint", pendingAEP, currentAEP, { "AntiPoint", "AntiPrestigePoint", "AntiLevelsToken" })
+                                if shouldReset then
+                                    Remotes.AntiEvil:FireServer()
+                                    print(string.format("[Mhnaa [PRO]] 😈 Smart Anti-Evil kích hoạt! (Lý do: %s | Nhận: %s AEP$)", reason, tostring(pendingAEP)))
                                 end
+                            end
+                        end
+                        
+                        -- C. Smart Dark Prestige (BlackHole)
+                        if Config.SmartDarkPrestige and Remotes:FindFirstChild("DarkPrestige") then
+                            if pd:FindFirstChild("UnlockedDarkPrestiges") and pd.UnlockedDarkPrestiges.Value == true then
+                                local pendingDPE = ReadPlayerMulti.PlayerDarkPrestigeEnergieCount and ReadPlayerMulti.PlayerDarkPrestigeEnergieCount(LocalPlayer)
+                                local currentDPE = parseCurrency(pd:FindFirstChild("DarkPrestigeEnergie") and pd.DarkPrestigeEnergie.Value or "0")
+                                local shouldReset, reason = shouldTriggerSmartPrestige("DarkPrestigeEnergie", pendingDPE, currentDPE, { "DarkEnergie" })
+                                if shouldReset then
+                                    Remotes.DarkPrestige:FireServer()
+                                    print(string.format("[Mhnaa [PRO]] 🕳️ Smart Dark-Prestige kích hoạt! (Lý do: %s | Nhận: %s DPE)", reason, tostring(pendingDPE)))
+                                end
+                            end
+                        end
+                        
+                        -- D. Smart Dark Evil (BlackHole)
+                        if Config.SmartDarkEvil and Remotes:FindFirstChild("DarkEvil") then
+                            if pd:FindFirstChild("UnlockedDarkEvil") and pd.UnlockedDarkEvil.Value == true then
+                                local pendingDEE = ReadPlayerMulti.PlayerDarkEvilEnergieCount and ReadPlayerMulti.PlayerDarkEvilEnergieCount(LocalPlayer)
+                                local currentDEE = parseCurrency(pd:FindFirstChild("DarkEvilEnergie") and pd.DarkEvilEnergie.Value or "0")
+                                local shouldReset, reason = shouldTriggerSmartPrestige("DarkEvilEnergie", pendingDEE, currentDEE, { "DarkEnergie", "DarkPrestigeEnergie" })
+                                if shouldReset then
+                                    Remotes.DarkEvil:FireServer()
+                                    print(string.format("[Mhnaa [PRO]] 🖤 Smart Dark-Evil kích hoạt! (Lý do: %s | Nhận: %s DEE)", reason, tostring(pendingDEE)))
+                                end
+                            end
+                        end
+                        
+                        -- E. Smart Overworld Prestige & Evil
+                        local loopVal = pd:FindFirstChild("Loop") and pd.Loop.Value or 0
+                        if Config.SmartOverworldPrestige and Remotes:FindFirstChild("Prestige") then
+                            local pendingPP = ReadPlayerMulti.PlayerPrestigeCount and ReadPlayerMulti.PlayerPrestigeCount(LocalPlayer)
+                            if pendingPP and pendingPP > InfMaths.new("0") then
+                                if loopVal >= 2 then
+                                    -- Loop 2: Prestiges & Evils don't reset anything! Miễn phí 100%!
+                                    Remotes.Prestige:FireServer()
+                                else
+                                    local currentPP = parseCurrency(pd:FindFirstChild("PrestigePoints") and pd.PrestigePoints.Value or "0")
+                                    local shouldReset = shouldTriggerSmartPrestige("PrestigePoints", pendingPP, currentPP, { "Points", "Clicks" })
+                                    if shouldReset then
+                                        Remotes.Prestige:FireServer()
+                                    end
+                                end
+                            end
+                        end
+                        if Config.SmartOverworldEvil and Remotes:FindFirstChild("Evil") then
+                            local pendingEP = ReadPlayerMulti.PlayerEvilCount and ReadPlayerMulti.PlayerEvilCount(LocalPlayer)
+                            if pendingEP and pendingEP > InfMaths.new("0") then
+                                if loopVal >= 2 then
+                                    Remotes.Evil:FireServer()
+                                else
+                                    local currentEP = parseCurrency(pd:FindFirstChild("EvilPoints") and pd.EvilPoints.Value or "0")
+                                    local shouldReset = shouldTriggerSmartPrestige("EvilPoints", pendingEP, currentEP, { "Points", "PrestigePoints" })
+                                    if shouldReset then
+                                        Remotes.Evil:FireServer()
+                                    end
+                                end
+                            end
+                        end
+                        
+                        -- F. Smart Tower Prestige (Genesis / Tower)
+                        if Config.SmartTowerPrestige and Remotes:FindFirstChild("TowerPrestige") then
+                            local pendingTPP = ReadPlayerMulti.PlayerTowerPrestigePointsCount and ReadPlayerMulti.PlayerTowerPrestigePointsCount(LocalPlayer)
+                            local currentTPP = parseCurrency(pd:FindFirstChild("TowerPrestigePoints") and pd.TowerPrestigePoints.Value or "0")
+                            local shouldReset, reason = shouldTriggerSmartPrestige("TowerPrestigePoints", pendingTPP, currentTPP, { "TowerPoints" })
+                            if shouldReset then
+                                Remotes.TowerPrestige:FireServer()
+                                print(string.format("[Mhnaa [PRO]] 🗼 Smart Tower Prestige kích hoạt! (Lý do: %s)", reason))
                             end
                         end
                     end
@@ -510,33 +710,7 @@ task.spawn(function()
                         end
                     end
                     
-                    -- 4. Auto Dark Prestige (BlackHole)
-                    if Config.AutoDarkPrestige and Remotes:FindFirstChild("DarkPrestige") then
-                        if ReadPlayerMulti and InfMaths and pd:FindFirstChild("UnlockedDarkPrestiges") and pd.UnlockedDarkPrestiges.Value == true then
-                            local pendingDPE = ReadPlayerMulti.PlayerDarkPrestigeEnergieCount and ReadPlayerMulti.PlayerDarkPrestigeEnergieCount(LocalPlayer)
-                            local currentDPE = parseCurrency(pd:FindFirstChild("DarkPrestigeEnergie") and pd.DarkPrestigeEnergie.Value or "0")
-                            if pendingDPE and (pendingDPE > InfMaths.new("0")) then
-                                if currentDPE < InfMaths.new("1e6") or pendingDPE >= (currentDPE * InfMaths.new("0.1")) then
-                                    Remotes.DarkPrestige:FireServer()
-                                end
-                            end
-                        end
-                    end
-                    
-                    -- 5. Auto Dark Evil (BlackHole)
-                    if Config.AutoDarkEvil and Remotes:FindFirstChild("DarkEvil") then
-                        if ReadPlayerMulti and InfMaths and pd:FindFirstChild("UnlockedDarkEvil") and pd.UnlockedDarkEvil.Value == true then
-                            local pendingDEE = ReadPlayerMulti.PlayerDarkEvilEnergieCount and ReadPlayerMulti.PlayerDarkEvilEnergieCount(LocalPlayer)
-                            local currentDEE = parseCurrency(pd:FindFirstChild("DarkEvilEnergie") and pd.DarkEvilEnergie.Value or "0")
-                            if pendingDEE and (pendingDEE > InfMaths.new("0")) then
-                                if currentDEE < InfMaths.new("1e6") or pendingDEE >= (currentDEE * InfMaths.new("0.1")) then
-                                    Remotes.DarkEvil:FireServer()
-                                end
-                            end
-                        end
-                    end
-                    
-                    -- 5b. Auto Token Reset (BlackHole)
+                    -- 4. Auto Token Reset (BlackHole)
                     if Config.AutoToken and Remotes:FindFirstChild("Token") then
                         if pd:FindFirstChild("UnlockedToken") and pd.UnlockedToken.Value == true then
                             local u139 = upgFolder and upgFolder:FindFirstChild("139") and upgFolder["139"].Value or 0
@@ -550,31 +724,7 @@ task.spawn(function()
                         end
                     end
                     
-                    -- 6. Auto Anti Prestige & Anti Evil (Anti World)
-                    if Config.AutoAntiPrestige and Remotes:FindFirstChild("AntiPrestige") then
-                        if ReadPlayerMulti and InfMaths and pd:FindFirstChild("UnlockedAntiPrestige") and pd.UnlockedAntiPrestige.Value == true then
-                            local pendingAPP = ReadPlayerMulti.PlayerAntiPrestigePointsCount and ReadPlayerMulti.PlayerAntiPrestigePointsCount(LocalPlayer)
-                            local currentAPP = parseCurrency(pd:FindFirstChild("AntiPrestigePoint") and pd.AntiPrestigePoint.Value or "0")
-                            if pendingAPP and (pendingAPP > InfMaths.new("0")) then
-                                if (currentAPP < InfMaths.new("5") and pendingAPP >= InfMaths.new("1")) or (pendingAPP >= (currentAPP * InfMaths.new("0.1"))) then
-                                    Remotes.AntiPrestige:FireServer()
-                                end
-                            end
-                        end
-                    end
-                    if Config.AutoAntiEvil and Remotes:FindFirstChild("AntiEvil") then
-                        if ReadPlayerMulti and InfMaths and pd:FindFirstChild("UnlockedAntiEvil") and pd.UnlockedAntiEvil.Value == true then
-                            local pendingAEP = ReadPlayerMulti.PlayerAntiEvilPointsCount and ReadPlayerMulti.PlayerAntiEvilPointsCount(LocalPlayer)
-                            local currentAEP = parseCurrency(pd:FindFirstChild("AntiEvilPoint") and pd.AntiEvilPoint.Value or "0")
-                            if pendingAEP and (pendingAEP > InfMaths.new("0")) then
-                                if (currentAEP < InfMaths.new("5") and pendingAEP >= InfMaths.new("1")) or (pendingAEP >= (currentAEP * InfMaths.new("0.1"))) then
-                                    Remotes.AntiEvil:FireServer()
-                                end
-                            end
-                        end
-                    end
-                    
-                    -- 7. Auto Supernova (Supernova World)
+                    -- 5. Auto Supernova (Supernova World)
                     if Config.AutoSupernova and Remotes:FindFirstChild("Supernova") then
                         if otherUI and otherUI:FindFirstChild("Supernova") and otherUI.Supernova:FindFirstChild("Main") then
                             local snBtn = otherUI.Supernova.Main:FindFirstChild("TextButton")
@@ -586,15 +736,7 @@ task.spawn(function()
                         end
                     end
                     
-                    -- 8. Auto Tower Prestige & God Offer (Genesis / God Offer)
-                    if Config.AutoTowerPrestige and Remotes:FindFirstChild("TowerPrestige") then
-                        if ReadPlayerMulti and InfMaths then
-                            local pendingTPP = ReadPlayerMulti.PlayerTowerPrestigePointsCount and ReadPlayerMulti.PlayerTowerPrestigePointsCount(LocalPlayer)
-                            if pendingTPP and (pendingTPP > InfMaths.new("0")) then
-                                Remotes.TowerPrestige:FireServer()
-                            end
-                        end
-                    end
+                    -- 6. Auto God Offer (Genesis / God Offer)
                     if Config.AutoGodOffer and Remotes:FindFirstChild("GodOffer") then
                         if otherUI and otherUI:FindFirstChild("God") and otherUI.God:FindFirstChild("Main") then
                             local gBtn = otherUI.God.Main:FindFirstChild("TextButton")
@@ -758,65 +900,107 @@ FarmTab:CreateSlider({
     end
 })
 
-FarmTab:CreateSection("PRESTIGE & RESETS")
+FarmTab:CreateSection("⭐ SMART PRESTIGES ENGINE (TẤT CẢ THẾ GIỚI)")
 
 FarmTab:CreateToggle({
-    Title = "Auto Prestige (Safe)",
-    Description = "Automatically prestiges when PP can be gained",
-    Default = Config.AutoPrestige,
+    Title = "Kích Hoạt Smart Prestiges",
+    Description = "Tự động phân tích sản lượng & mục tiêu upgrade để reset đúng thời điểm tối ưu",
+    Default = Config.SmartPrestiges,
     Callback = function(val)
-        Config.AutoPrestige = val
+        Config.SmartPrestiges = val
+    end
+})
+
+FarmTab:CreateSlider({
+    Title = "Smart Gain Multiplier",
+    Min = 1.5,
+    Max = 10.0,
+    Default = Config.SmartPrestigeMultiplier,
+    Decimals = 1,
+    Suffix = "x",
+    Callback = function(val)
+        Config.SmartPrestigeMultiplier = val
     end
 })
 
 FarmTab:CreateToggle({
-    Title = "Auto Evil Reset",
-    Description = "Triggers Evil reset when available",
-    Default = Config.AutoEvil,
+    Title = "Reset Ngay Khi Đủ Điểm Mua Upgrade Tiếp Theo",
+    Description = "Tự động nhận diện nâng cấp kế tiếp trong cây và kích hoạt reset ngay khi đủ điểm",
+    Default = Config.SmartTargetNextUpgrade,
     Callback = function(val)
-        Config.AutoEvil = val
+        Config.SmartTargetNextUpgrade = val
     end
 })
 
 FarmTab:CreateToggle({
-    Title = "Auto Dark Prestige",
-    Description = "Automatically triggers Dark Prestige when available",
-    Default = Config.AutoDarkPrestige,
+    Title = "Ưu Tiên Mua Hết Upgrade Trước Khi Reset",
+    Description = "Đảm bảo mua hết tất cả nâng cấp khả dụng trong thế giới trước khi xoá điểm",
+    Default = Config.SmartWaitBuyables,
     Callback = function(val)
-        Config.AutoDarkPrestige = val
+        Config.SmartWaitBuyables = val
+    end
+})
+
+FarmTab:CreateSection("CÀI ĐẶT PRESTIGE TỪNG THẾ GIỚI")
+
+FarmTab:CreateToggle({
+    Title = "Smart Anti-Prestige (Anti World)",
+    Description = "Reset Anti Points & Levels thông minh khi đạt APP$ tối ưu cho Anti World",
+    Default = Config.SmartAntiPrestige,
+    Callback = function(val)
+        Config.SmartAntiPrestige = val
     end
 })
 
 FarmTab:CreateToggle({
-    Title = "Auto Supernova",
-    Description = "Triggers Supernova reset when available",
-    Default = Config.AutoSupernova,
+    Title = "Smart Anti-Evil (Anti World)",
+    Description = "Tự động kích hoạt Anti Evil khi đủ điều kiện và đạt lợi nhuận cao nhất",
+    Default = Config.SmartAntiEvil,
     Callback = function(val)
-        Config.AutoSupernova = val
+        Config.SmartAntiEvil = val
     end
 })
 
 FarmTab:CreateToggle({
-    Title = "Auto Anti Prestige",
-    Description = "Tự động reset Anti Prestige khi đạt điểm tối ưu",
-    Default = Config.AutoAntiPrestige,
+    Title = "Smart Dark Prestige (BlackHole)",
+    Description = "Reset Dark Prestige thông minh tại thế giới BlackHole",
+    Default = Config.SmartDarkPrestige,
     Callback = function(val)
-        Config.AutoAntiPrestige = val
+        Config.SmartDarkPrestige = val
     end
 })
 
 FarmTab:CreateToggle({
-    Title = "Auto Anti Evil",
-    Description = "Tự động reset Anti Evil khi khả dụng",
-    Default = Config.AutoAntiEvil,
+    Title = "Smart Dark Evil (BlackHole)",
+    Description = "Reset Dark Evil thông minh tại BlackHole",
+    Default = Config.SmartDarkEvil,
     Callback = function(val)
-        Config.AutoAntiEvil = val
+        Config.SmartDarkEvil = val
+    end
+})
+
+FarmTab:CreateToggle({
+    Title = "Smart Overworld Prestige & Evil",
+    Description = "Tự động Prestige & Evil Overworld (Miễn phí 100% khi đạt Loop 2)",
+    Default = Config.SmartOverworldPrestige,
+    Callback = function(val)
+        Config.SmartOverworldPrestige = val
+        Config.SmartOverworldEvil = val
+    end
+})
+
+FarmTab:CreateToggle({
+    Title = "Smart Tower Prestige (Genesis)",
+    Description = "Tự động reset Tower Prestige khi đạt mốc tối ưu",
+    Default = Config.SmartTowerPrestige,
+    Callback = function(val)
+        Config.SmartTowerPrestige = val
     end
 })
 
 FarmTab:CreateToggle({
     Title = "Auto Loop Reset",
-    Description = "Tự động Loop khi đủ điều kiện level yêu cầu",
+    Description = "Tự động chuyển Loop ngay khi đủ cấp độ yêu cầu",
     Default = Config.AutoLoop,
     Callback = function(val)
         Config.AutoLoop = val
@@ -824,8 +1008,17 @@ FarmTab:CreateToggle({
 })
 
 FarmTab:CreateToggle({
+    Title = "Auto Supernova",
+    Description = "Kích hoạt Supernova khi khả dụng",
+    Default = Config.AutoSupernova,
+    Callback = function(val)
+        Config.AutoSupernova = val
+    end
+})
+
+FarmTab:CreateToggle({
     Title = "Auto Token Reset (BlackHole)",
-    Description = "Tự động reset Token trong Blackhole khi cần mở upgrade",
+    Description = "Tự động reset Token trong BlackHole khi cần mở nâng cấp mới",
     Default = Config.AutoToken,
     Callback = function(val)
         Config.AutoToken = val
@@ -998,7 +1191,7 @@ local WorldTab = Window:CreateTab({
     Icon = "🚀"
 })
 
-WorldTab:CreateSection("🌟 TỰ ĐỘNG MỞ TẤT CẢ MAP (HANDS-FREE)")
+WorldTab:CreateSection("🌟 QUẢN LÝ TIẾN TRÌNH THẾ GIỚI (HANDS-FREE)")
 
 WorldTab:CreateToggle({
     Title = "Tự Động Mở Map & Điều Kiện",
@@ -1010,20 +1203,20 @@ WorldTab:CreateToggle({
 })
 
 WorldTab:CreateToggle({
-    Title = "Tự Động Vào Map Mới Nhất",
-    Description = "Ngay khi map mới được unlock, script tự động dịch chuyển nhân vật vào map đó",
-    Default = Config.AutoTeleportHighestWorld,
+    Title = "Giữ Nguyên Map Hiện Tại (Không Ép Chuyển)",
+    Description = "Không tự ý chuyển map để bạn thoải mái cày cuốc tại Anti World hoặc bất kỳ map nào",
+    Default = Config.StayInCurrentWorld,
     Callback = function(val)
-        Config.AutoTeleportHighestWorld = val
+        Config.StayInCurrentWorld = val
     end
 })
 
 WorldTab:CreateToggle({
-    Title = "Smart Auto-Reset (Prestige & Evil)",
-    Description = "Tự động reset khi đạt số nhân tối ưu hoặc cần mở khóa upgrade thế giới tiếp theo",
-    Default = Config.SmartAutoResets,
+    Title = "Tự Động Vào Map Mới (Chỉ Khi Vừa Unlock Lần Đầu)",
+    Description = "Chỉ tự động dịch chuyển 1 lần duy nhất khi vừa mở khóa thành công thế giới mới",
+    Default = Config.AutoTeleportHighestWorld,
     Callback = function(val)
-        Config.SmartAutoResets = val
+        Config.AutoTeleportHighestWorld = val
     end
 })
 
@@ -1037,32 +1230,11 @@ WorldTab:CreateToggle({
 })
 
 WorldTab:CreateToggle({
-    Title = "Tự Động Dark Prestige & Dark Evil",
-    Description = "Tự động reset tài nguyên Dark tại thế giới BlackHole",
-    Default = Config.AutoDarkPrestige,
-    Callback = function(val)
-        Config.AutoDarkPrestige = val
-        Config.AutoDarkEvil = val
-    end
-})
-
-WorldTab:CreateToggle({
-    Title = "Tự Động Anti Prestige & Anti Evil",
-    Description = "Tự động reset Anti Points tại thế giới Anti World",
-    Default = Config.AutoAntiPrestige,
-    Callback = function(val)
-        Config.AutoAntiPrestige = val
-        Config.AutoAntiEvil = val
-    end
-})
-
-WorldTab:CreateToggle({
     Title = "Tự Động Supernova / Genesis / Tower",
     Description = "Tự động kích hoạt Supernova và Tower Prestige khi khả dụng",
     Default = Config.AutoSupernova,
     Callback = function(val)
         Config.AutoSupernova = val
-        Config.AutoTowerPrestige = val
     end
 })
 
@@ -1076,6 +1248,53 @@ WorldTab:CreateToggle({
         Config.AutoAscend = val
         Config.AutoCycle = val
         Config.AutoRocketParts = val
+    end
+})
+
+WorldTab:CreateSection("⚡ DỊCH CHUYỂN NHANH 1-CHẠM (QUICK TRAVEL)")
+
+WorldTab:CreateButton({
+    Title = "🚀 Dịch Chuyển Tới Anti World",
+    Description = "Vào ngay Anti World để cày Anti Points & Anti Levels",
+    Callback = function()
+        if Remotes and Remotes:FindFirstChild("ChangeWorld") then
+            Remotes.ChangeWorld:FireServer("AntiWorld")
+            pcall(function()
+                local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then hrp.CFrame = CFrame.new(Vector3.new(-8190.5, 8.0, 25.5)) end
+            end)
+            MhnaaUI:Notify({ Title = "Thế Giới", Content = "Đang vào Anti World...", Duration = 3 })
+        end
+    end
+})
+
+WorldTab:CreateButton({
+    Title = "🕳️ Dịch Chuyển Tới BlackHole",
+    Description = "Vào BlackHole để cày Dark Energie & Token",
+    Callback = function()
+        if Remotes and Remotes:FindFirstChild("ChangeWorld") then
+            Remotes.ChangeWorld:FireServer("BlackHole")
+            pcall(function()
+                local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then hrp.CFrame = CFrame.new(Vector3.new(4312.5, 8.0, 25.5)) end
+            end)
+            MhnaaUI:Notify({ Title = "Thế Giới", Content = "Đang vào BlackHole...", Duration = 3 })
+        end
+    end
+})
+
+WorldTab:CreateButton({
+    Title = "🌍 Dịch Chuyển Tới Overworld (Spawn)",
+    Description = "Về thế giới ban đầu để cày Level, Points, Clicks",
+    Callback = function()
+        if Remotes and Remotes:FindFirstChild("ChangeWorld") then
+            Remotes.ChangeWorld:FireServer("Spawn")
+            pcall(function()
+                local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if hrp then hrp.CFrame = CFrame.new(Vector3.new(0.0, 9.5, 1.5)) end
+            end)
+            MhnaaUI:Notify({ Title = "Thế Giới", Content = "Đang về Overworld...", Duration = 3 })
+        end
     end
 })
 
