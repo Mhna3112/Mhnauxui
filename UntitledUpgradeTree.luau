@@ -183,16 +183,17 @@ end
 
 -- CURRENCY & UPGRADE CHECKERS
 local function parseCurrency(valStr)
+    local s = tostring(valStr or "0")
     if not InfMaths or not ConfertTable then
-        return tonumber(valStr) or 0
+        return tonumber(s) or 0
     end
     local ok, t = pcall(function()
-        return ConfertTable.stringToTable(valStr)
+        return ConfertTable.stringToTable(s)
     end)
     if ok and t then
         return InfMaths.new(t)
     end
-    return InfMaths.new("0")
+    return InfMaths.new(s)
 end
 
 local function canBuyUpgrade(id)
@@ -206,11 +207,11 @@ local function canBuyUpgrade(id)
     if not currentUpg then return false end
 
     local maxVal = type(def.Max) == "function" and def.Max(LocalPlayer, true) or def.Max
-    if currentUpg.Value >= maxVal then return false end
+    if maxVal and currentUpg.Value >= maxVal then return false end
 
     -- Check Unlock Prerequisite
-    local unlockId = tonumber(def.Unlock) or def.Unlock
-    if unlockId and unlockId ~= 0 and type(unlockId) == "number" then
+    local unlockId = tonumber(def.Unlock)
+    if unlockId and unlockId ~= 0 then
         local prereq = upgFolder:FindFirstChild(tostring(unlockId))
         if not prereq or prereq.Value <= 0 then
             return false
@@ -218,8 +219,8 @@ local function canBuyUpgrade(id)
     end
 
     -- Check HasUnlock Prerequisite
-    local hasUnlockId = tonumber(def.HasUnlock) or def.HasUnlock
-    if hasUnlockId and hasUnlockId ~= 0 and type(hasUnlockId) == "number" then
+    local hasUnlockId = tonumber(def.HasUnlock)
+    if hasUnlockId and hasUnlockId ~= 0 then
         local prereq = upgFolder:FindFirstChild(tostring(hasUnlockId))
         if not prereq or prereq.Value <= 0 then
             return false
@@ -227,16 +228,22 @@ local function canBuyUpgrade(id)
     end
 
     -- Special Conditions
-    local pd = LocalPlayer.Data.PlayerData
-    if def.Unlock == "SupernovaMilestone" and (pd.SupernovaMilestone.Value < (def.HasUnlock or 0)) then
+    local pd = LocalPlayer:FindFirstChild("Data") and LocalPlayer.Data:FindFirstChild("PlayerData")
+    if not pd then return false end
+
+    if def.Unlock == "SupernovaMilestone" and (pd:FindFirstChild("SupernovaMilestone") and pd.SupernovaMilestone.Value < (def.HasUnlock or 0)) then
         return false
-    elseif def.Unlock == "Loop" and (pd.Loop.Value < (def.HasUnlock or 0)) then
+    elseif def.Unlock == "Loop" and (pd:FindFirstChild("Loop") and pd.Loop.Value < (def.HasUnlock or 0)) then
         return false
-    elseif def.Unlock == "Cycle" and (pd.Cycle.Value < (def.HasUnlock or 0)) then
+    elseif def.Unlock == "Cycle" and (pd:FindFirstChild("Cycle") and pd.Cycle.Value < (def.HasUnlock or 0)) then
         return false
-    elseif def.Unlock == "Stage" and (pd.Stage.Value < (def.HasUnlock or 0)) then
+    elseif def.Unlock == "Stage" and (pd:FindFirstChild("Stage") and pd.Stage.Value < (def.HasUnlock or 0)) then
         return false
-    elseif def.Unlock == "UnlockedSupernova" and not pd.UnlockedSupernova.Value then
+    elseif def.Unlock == "UnlockedSupernova" and (not pd:FindFirstChild("UnlockedSupernova") or not pd.UnlockedSupernova.Value) then
+        return false
+    end
+
+    if def.HasUnlock == "Cycle" and (not pd:FindFirstChild("Cycle") or pd.Cycle.Value < 1) then
         return false
     end
 
@@ -245,22 +252,26 @@ local function canBuyUpgrade(id)
         return false
     end
 
-    local playerCur = parseCurrency(pd[def.CurrencyCost].Value)
-    local priceStr = type(def.Price) == "function" and def.Price(LocalPlayer) or def.Price
-    if not priceStr or priceStr == "" then return false end
+    local okAfford, canAfford = pcall(function()
+        local playerCur = parseCurrency(pd[def.CurrencyCost].Value)
+        local priceStr = type(def.Price) == "function" and def.Price(LocalPlayer) or def.Price
+        if not priceStr or priceStr == "" then return false end
 
-    local baseCost = InfMaths.parseAbbreviatedNumber(tostring(priceStr))
-    local priceInc = tonumber(def.PriceInc) or 1
-    local currentLevel = currentUpg.Value
+        local baseCost = InfMaths.parseAbbreviatedNumber(tostring(priceStr))
+        local priceInc = tonumber(def.PriceInc) or 1
+        local currentLevel = currentUpg.Value
 
-    local totalCost
-    if currentLevel == 0 or priceInc == 1 then
-        totalCost = baseCost
-    else
-        totalCost = baseCost * (InfMaths.new(tostring(priceInc)) ^ InfMaths.new(tostring(currentLevel)))
-    end
+        local totalCost
+        if currentLevel == 0 or priceInc == 1 then
+            totalCost = baseCost
+        else
+            totalCost = baseCost * (InfMaths.new(tostring(priceInc)) ^ InfMaths.new(tostring(currentLevel)))
+        end
 
-    return playerCur >= totalCost
+        return playerCur >= totalCost
+    end)
+
+    return okAfford and canAfford
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -292,6 +303,19 @@ task.spawn(function()
     while _G.UUT_Mhnaa_Running do
         if Config.AutoBuyUpgrades and Remotes and Remotes:FindFirstChild("BuyUpg") then
             pcall(function()
+                -- Prioritize AntiLevel Token upgrades if tokens are available
+                local pd = LocalPlayer:FindFirstChild("Data") and LocalPlayer.Data:FindFirstChild("PlayerData")
+                local altTokens = pd and pd:FindFirstChild("AntiLevelsToken") and tonumber(pd.AntiLevelsToken.Value) or 0
+                if altTokens and altTokens > 0 then
+                    local tokenUpgs = {157, 158, 172, 173, 186}
+                    for _, id in ipairs(tokenUpgs) do
+                        if canBuyUpgrade(id) then
+                            Remotes.BuyUpg:FireServer(id)
+                            task.wait(0.02)
+                        end
+                    end
+                end
+
                 for id = 1, #UpgradeDefs do
                     if not _G.UUT_Mhnaa_Running or not Config.AutoBuyUpgrades then break end
                     if canBuyUpgrade(id) then
@@ -468,9 +492,10 @@ task.spawn(function()
                             local btn = loopUI.Main:FindFirstChild("TextButton")
                             if btn and btn.Visible then
                                 local canLoop = true
-                                for _, lbl in ipairs(loopUI.Main:GetChildren()) do
-                                    if lbl:IsA("TextLabel") and string.find(lbl.Text, "Require") then
-                                        local reqLvl = tonumber(string.match(lbl.Text, "(%d+)"))
+                                for _, lbl in ipairs(loopUI:GetDescendants()) do
+                                    if (lbl:IsA("TextLabel") or lbl:IsA("TextButton")) and string.find(lbl.Text, "Require") then
+                                        local sanitized = string.gsub(lbl.Text, ",", "")
+                                        local reqLvl = tonumber(string.match(sanitized, "(%d+)"))
                                         local curLvl = pd:FindFirstChild("Levels") and pd.Levels.Value or 0
                                         if reqLvl and curLvl < reqLvl then
                                             canLoop = false
@@ -487,11 +512,11 @@ task.spawn(function()
                     
                     -- 4. Auto Dark Prestige (BlackHole)
                     if Config.AutoDarkPrestige and Remotes:FindFirstChild("DarkPrestige") then
-                        if ReadPlayerMulti and InfMaths then
+                        if ReadPlayerMulti and InfMaths and pd:FindFirstChild("UnlockedDarkPrestiges") and pd.UnlockedDarkPrestiges.Value == true then
                             local pendingDPE = ReadPlayerMulti.PlayerDarkPrestigeEnergieCount and ReadPlayerMulti.PlayerDarkPrestigeEnergieCount(LocalPlayer)
                             local currentDPE = parseCurrency(pd:FindFirstChild("DarkPrestigeEnergie") and pd.DarkPrestigeEnergie.Value or "0")
                             if pendingDPE and (pendingDPE > InfMaths.new("0")) then
-                                if currentDPE < InfMaths.new("1e6") or pendingDPE >= (currentDPE * InfMaths.new("0.05")) then
+                                if currentDPE < InfMaths.new("1e6") or pendingDPE >= (currentDPE * InfMaths.new("0.1")) then
                                     Remotes.DarkPrestige:FireServer()
                                 end
                             end
@@ -500,11 +525,11 @@ task.spawn(function()
                     
                     -- 5. Auto Dark Evil (BlackHole)
                     if Config.AutoDarkEvil and Remotes:FindFirstChild("DarkEvil") then
-                        if ReadPlayerMulti and InfMaths then
+                        if ReadPlayerMulti and InfMaths and pd:FindFirstChild("UnlockedDarkEvil") and pd.UnlockedDarkEvil.Value == true then
                             local pendingDEE = ReadPlayerMulti.PlayerDarkEvilEnergieCount and ReadPlayerMulti.PlayerDarkEvilEnergieCount(LocalPlayer)
                             local currentDEE = parseCurrency(pd:FindFirstChild("DarkEvilEnergie") and pd.DarkEvilEnergie.Value or "0")
                             if pendingDEE and (pendingDEE > InfMaths.new("0")) then
-                                if currentDEE < InfMaths.new("1e6") or pendingDEE >= (currentDEE * InfMaths.new("0.05")) then
+                                if currentDEE < InfMaths.new("1e6") or pendingDEE >= (currentDEE * InfMaths.new("0.1")) then
                                     Remotes.DarkEvil:FireServer()
                                 end
                             end
@@ -527,18 +552,24 @@ task.spawn(function()
                     
                     -- 6. Auto Anti Prestige & Anti Evil (Anti World)
                     if Config.AutoAntiPrestige and Remotes:FindFirstChild("AntiPrestige") then
-                        if ReadPlayerMulti and InfMaths then
+                        if ReadPlayerMulti and InfMaths and pd:FindFirstChild("UnlockedAntiPrestige") and pd.UnlockedAntiPrestige.Value == true then
                             local pendingAPP = ReadPlayerMulti.PlayerAntiPrestigePointsCount and ReadPlayerMulti.PlayerAntiPrestigePointsCount(LocalPlayer)
+                            local currentAPP = parseCurrency(pd:FindFirstChild("AntiPrestigePoint") and pd.AntiPrestigePoint.Value or "0")
                             if pendingAPP and (pendingAPP > InfMaths.new("0")) then
-                                Remotes.AntiPrestige:FireServer()
+                                if (currentAPP < InfMaths.new("5") and pendingAPP >= InfMaths.new("1")) or (pendingAPP >= (currentAPP * InfMaths.new("0.1"))) then
+                                    Remotes.AntiPrestige:FireServer()
+                                end
                             end
                         end
                     end
                     if Config.AutoAntiEvil and Remotes:FindFirstChild("AntiEvil") then
-                        if ReadPlayerMulti and InfMaths then
+                        if ReadPlayerMulti and InfMaths and pd:FindFirstChild("UnlockedAntiEvil") and pd.UnlockedAntiEvil.Value == true then
                             local pendingAEP = ReadPlayerMulti.PlayerAntiEvilPointsCount and ReadPlayerMulti.PlayerAntiEvilPointsCount(LocalPlayer)
+                            local currentAEP = parseCurrency(pd:FindFirstChild("AntiEvilPoint") and pd.AntiEvilPoint.Value or "0")
                             if pendingAEP and (pendingAEP > InfMaths.new("0")) then
-                                Remotes.AntiEvil:FireServer()
+                                if (currentAEP < InfMaths.new("5") and pendingAEP >= InfMaths.new("1")) or (pendingAEP >= (currentAEP * InfMaths.new("0.1"))) then
+                                    Remotes.AntiEvil:FireServer()
+                                end
                             end
                         end
                     end
@@ -762,6 +793,42 @@ FarmTab:CreateToggle({
     Default = Config.AutoSupernova,
     Callback = function(val)
         Config.AutoSupernova = val
+    end
+})
+
+FarmTab:CreateToggle({
+    Title = "Auto Anti Prestige",
+    Description = "Tự động reset Anti Prestige khi đạt điểm tối ưu",
+    Default = Config.AutoAntiPrestige,
+    Callback = function(val)
+        Config.AutoAntiPrestige = val
+    end
+})
+
+FarmTab:CreateToggle({
+    Title = "Auto Anti Evil",
+    Description = "Tự động reset Anti Evil khi khả dụng",
+    Default = Config.AutoAntiEvil,
+    Callback = function(val)
+        Config.AutoAntiEvil = val
+    end
+})
+
+FarmTab:CreateToggle({
+    Title = "Auto Loop Reset",
+    Description = "Tự động Loop khi đủ điều kiện level yêu cầu",
+    Default = Config.AutoLoop,
+    Callback = function(val)
+        Config.AutoLoop = val
+    end
+})
+
+FarmTab:CreateToggle({
+    Title = "Auto Token Reset (BlackHole)",
+    Description = "Tự động reset Token trong Blackhole khi cần mở upgrade",
+    Default = Config.AutoToken,
+    Callback = function(val)
+        Config.AutoToken = val
     end
 })
 
