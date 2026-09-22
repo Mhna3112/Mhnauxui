@@ -108,6 +108,12 @@ local Config = {
     SmartAntiEvil = true,
     SmartTowerPrestige = true,
     
+    -- 🛡️ CHỐNG LẶP LẠI MAP ĐÃ HOÀN THÀNH (ANTI-REPEAT SHIELD)
+    SkipCompletedWorlds = true,             -- Bỏ qua không bao giờ quay lại các map đã hoàn thành 100% (Galaxy, Spawn...)
+    BlockCompletedResets = true,            -- Chặn tuyệt đối Prestige / Evil / Dark Prestige / Reset khi map đó đã max hết upgrade
+    AutoProgressUnfinishedWorlds = false,   -- Tự động tuần tự chuyển đến map tiếp theo chưa xong (Spawn -> Galaxy -> BlackHole -> AntiWorld...)
+    SafeAutoLoop = true,                    -- Không tự động Loop reset nếu đang dở dang cày cuốc map hiện tại
+    
     -- Resets & Progression khác
     AutoUnlockWorlds = true,
     AutoLoop = true,
@@ -187,6 +193,70 @@ local function getHighestUnlockedWorld()
         end
     end
     return highest.name, lastReset, highest.coords
+end
+
+-- 🛡️ WORLD & CURRENCY COMPLETION DETECTORS (ANTI-REPEAT SYSTEM)
+local WorldCurrencyMap = {
+    ["Spawn"] = { "PrestigePoints", "EvilPoints", "Clicks" },
+    ["Galaxy"] = { "GalaxyPoints", "Rocks", "Steel", "TotalRolls", "Alpha" },
+    ["BlackHole"] = { "DarkEnergie", "DarkPrestigeEnergie", "DarkEvilEnergie", "Token" },
+    ["AntiWorld"] = { "AntiPoint", "AntiLevelsToken", "AntiPrestigePoint", "AntiEvilPoint" },
+    ["Supernova"] = { "SupernovaPoint" },
+    ["Genesis"] = { "TowerPoints", "TowerPrestigePoints", "Blocks", "Units" },
+    ["God"] = { "WishToken" },
+    ["Bigbang"] = { "Memories" },
+    ["Void"] = { "VoidCurrency" },
+    ["World 2"] = { "WorldCurrency", "Coins" },
+    ["Cycle"] = { "Shards", "AscendPoints" },
+    ["Space"] = { "CosmicMatter", "HellPoints", "Bubbles", "RocketParts" },
+}
+
+local function getUnboughtUpgradeCount(currencyName)
+    local upgFolder = LocalPlayer:FindFirstChild("Data") and LocalPlayer.Data:FindFirstChild("Upgrades")
+    if not upgFolder then return 0 end
+    local unbought = 0
+    for id = 1, #UpgradeDefs do
+        local def = UpgradeDefs[id]
+        if def and def.CurrencyCost == currencyName then
+            local curUpg = upgFolder:FindFirstChild(tostring(id))
+            local maxVal = type(def.Max) == "function" and def.Max(LocalPlayer, true) or def.Max
+            local val = curUpg and curUpg.Value or 0
+            if not maxVal or val < maxVal then
+                unbought = unbought + 1
+            end
+        end
+    end
+    return unbought
+end
+
+local function isCurrencyCompleted(currencyName)
+    return getUnboughtUpgradeCount(currencyName) == 0
+end
+
+local function isWorldCompleted(worldName)
+    local curList = WorldCurrencyMap[worldName]
+    if not curList then return false end
+    for _, cur in ipairs(curList) do
+        if getUnboughtUpgradeCount(cur) > 0 then
+            return false
+        end
+    end
+    return true
+end
+
+local function getNextUnfinishedWorld()
+    local pd = LocalPlayer:FindFirstChild("Data") and LocalPlayer.Data:FindFirstChild("PlayerData")
+    local lastReset = pd and pd:FindFirstChild("LastReset") and pd.LastReset.Value or 0
+    
+    for _, w in ipairs(WorldProgressionList) do
+        if lastReset >= w.requiredResets then
+            if not isWorldCompleted(w.name) then
+                return w.name, w.coords
+            end
+        end
+    end
+    local highest = WorldProgressionList[#WorldProgressionList]
+    return highest.name, highest.coords
 end
 
 -- CURRENCY & UPGRADE CHECKERS
@@ -358,6 +428,11 @@ end
 local function shouldTriggerSmartPrestige(currencyName, pendingAmount, currentAmount, primaryCurrencies)
     if not pendingAmount or pendingAmount <= InfMaths.new("0") then
         return false, "no_pending"
+    end
+    
+    -- 🛡️ Chống lặp lại: Nếu currency của map này đã mua max 100% tất cả upgrade, KHÔNG BAO GIỜ reset nữa!
+    if Config.BlockCompletedResets and isCurrencyCompleted(currencyName) then
+        return false, "currency_all_upgrades_maxed"
     end
     
     -- 1. Nếu có upgrade đang mua được bằng tiền tệ hiện tại trong map, ưu tiên mua trước
@@ -566,9 +641,23 @@ task.spawn(function()
                 local otherUI = LocalPlayer:FindFirstChild("PlayerGui") and LocalPlayer.PlayerGui:FindFirstChild("OtherUI")
                 
                 if pd and Remotes then
-                    -- 1. Auto World Navigation (Chỉ chuyển khi thực sự có world mới mở khóa, không ép người chơi khi đang farm)
-                    local highestWorldName, lastReset = getHighestUnlockedWorld()
-                    if Config.AutoTeleportHighestWorld and not Config.StayInCurrentWorld then
+                    -- 1. Auto World Navigation (Tiến trình thế giới thông minh, không bao giờ lặp lại map đã xong)
+                    if Config.AutoProgressUnfinishedWorlds and not Config.StayInCurrentWorld then
+                        local nextWorld, coords = getNextUnfinishedWorld()
+                        local currentWorld = pd:FindFirstChild("WorldIn") and pd.WorldIn.Value
+                        if nextWorld and currentWorld and currentWorld ~= nextWorld then
+                            if Remotes:FindFirstChild("ChangeWorld") then
+                                Remotes.ChangeWorld:FireServer(nextWorld)
+                                print(string.format("[Mhnaa [PRO]] 🚀 Tiến trình thông minh: Chuyển tới map đang cần cày: %s (Bỏ qua map đã xong)", nextWorld))
+                                MhnaaUI:Notify({
+                                    Title = "🚀 CHUYỂN TỚI MAP CẦN FARM",
+                                    Content = "Map hiện tại đã xong. Đang farm tiếp: " .. nextWorld,
+                                    Duration = 4
+                                })
+                            end
+                        end
+                    elseif Config.AutoTeleportHighestWorld and not Config.StayInCurrentWorld then
+                        local highestWorldName, lastReset = getHighestUnlockedWorld()
                         if lastSeenReset == nil then
                             lastSeenReset = lastReset
                         elseif lastReset > lastSeenReset then
@@ -644,30 +733,36 @@ task.spawn(function()
                         -- E. Smart Overworld Prestige & Evil
                         local loopVal = pd:FindFirstChild("Loop") and pd.Loop.Value or 0
                         if Config.SmartOverworldPrestige and Remotes:FindFirstChild("Prestige") then
-                            local pendingPP = ReadPlayerMulti.PlayerPrestigeCount and ReadPlayerMulti.PlayerPrestigeCount(LocalPlayer)
-                            if pendingPP and pendingPP > InfMaths.new("0") then
-                                if loopVal >= 2 then
-                                    -- Loop 2: Prestiges & Evils don't reset anything! Miễn phí 100%!
-                                    Remotes.Prestige:FireServer()
-                                else
-                                    local currentPP = parseCurrency(pd:FindFirstChild("PrestigePoints") and pd.PrestigePoints.Value or "0")
-                                    local shouldReset = shouldTriggerSmartPrestige("PrestigePoints", pendingPP, currentPP, { "Points", "Clicks" })
-                                    if shouldReset then
+                            -- Nếu Overworld Prestige đã max hết toàn bộ upgrade, tuyệt đối không reset nữa!
+                            if not (Config.BlockCompletedResets and isCurrencyCompleted("PrestigePoints")) then
+                                local pendingPP = ReadPlayerMulti.PlayerPrestigeCount and ReadPlayerMulti.PlayerPrestigeCount(LocalPlayer)
+                                if pendingPP and pendingPP > InfMaths.new("0") then
+                                    if loopVal >= 2 then
+                                        -- Loop 2: Prestiges & Evils don't reset anything! Miễn phí 100%!
                                         Remotes.Prestige:FireServer()
+                                    else
+                                        local currentPP = parseCurrency(pd:FindFirstChild("PrestigePoints") and pd.PrestigePoints.Value or "0")
+                                        local shouldReset = shouldTriggerSmartPrestige("PrestigePoints", pendingPP, currentPP, { "Points", "Clicks" })
+                                        if shouldReset then
+                                            Remotes.Prestige:FireServer()
+                                        end
                                     end
                                 end
                             end
                         end
                         if Config.SmartOverworldEvil and Remotes:FindFirstChild("Evil") then
-                            local pendingEP = ReadPlayerMulti.PlayerEvilCount and ReadPlayerMulti.PlayerEvilCount(LocalPlayer)
-                            if pendingEP and pendingEP > InfMaths.new("0") then
-                                if loopVal >= 2 then
-                                    Remotes.Evil:FireServer()
-                                else
-                                    local currentEP = parseCurrency(pd:FindFirstChild("EvilPoints") and pd.EvilPoints.Value or "0")
-                                    local shouldReset = shouldTriggerSmartPrestige("EvilPoints", pendingEP, currentEP, { "Points", "PrestigePoints" })
-                                    if shouldReset then
+                            -- Nếu Overworld Evil đã max hết toàn bộ upgrade, tuyệt đối không reset nữa!
+                            if not (Config.BlockCompletedResets and isCurrencyCompleted("EvilPoints")) then
+                                local pendingEP = ReadPlayerMulti.PlayerEvilCount and ReadPlayerMulti.PlayerEvilCount(LocalPlayer)
+                                if pendingEP and pendingEP > InfMaths.new("0") then
+                                    if loopVal >= 2 then
                                         Remotes.Evil:FireServer()
+                                    else
+                                        local currentEP = parseCurrency(pd:FindFirstChild("EvilPoints") and pd.EvilPoints.Value or "0")
+                                        local shouldReset = shouldTriggerSmartPrestige("EvilPoints", pendingEP, currentEP, { "Points", "PrestigePoints" })
+                                        if shouldReset then
+                                            Remotes.Evil:FireServer()
+                                        end
                                     end
                                 end
                             end
@@ -687,24 +782,33 @@ task.spawn(function()
                     
                     -- 3. Auto Loop (Advances Loop from 9 -> 10 -> 11 when level requirement reached)
                     if Config.AutoLoop and Remotes:FindFirstChild("Loop") and otherUI then
-                        local loopUI = otherUI:FindFirstChild("Loop")
-                        if loopUI and loopUI:FindFirstChild("Main") then
-                            local btn = loopUI.Main:FindFirstChild("TextButton")
-                            if btn and btn.Visible then
-                                local canLoop = true
-                                for _, lbl in ipairs(loopUI:GetDescendants()) do
-                                    if (lbl:IsA("TextLabel") or lbl:IsA("TextButton")) and string.find(lbl.Text, "Require") then
-                                        local sanitized = string.gsub(lbl.Text, ",", "")
-                                        local reqLvl = tonumber(string.match(sanitized, "(%d+)"))
-                                        local curLvl = pd:FindFirstChild("Levels") and pd.Levels.Value or 0
-                                        if reqLvl and curLvl < reqLvl then
-                                            canLoop = false
+                        local allowLoop = true
+                        if Config.SafeAutoLoop then
+                            local currentWorld = pd:FindFirstChild("WorldIn") and pd.WorldIn.Value or "Spawn"
+                            if not isWorldCompleted(currentWorld) then
+                                allowLoop = false -- Đang cày dở map chưa xong, giữ an toàn không loop reset
+                            end
+                        end
+                        if allowLoop then
+                            local loopUI = otherUI:FindFirstChild("Loop")
+                            if loopUI and loopUI:FindFirstChild("Main") then
+                                local btn = loopUI.Main:FindFirstChild("TextButton")
+                                if btn and btn.Visible then
+                                    local canLoop = true
+                                    for _, lbl in ipairs(loopUI:GetDescendants()) do
+                                        if (lbl:IsA("TextLabel") or lbl:IsA("TextButton")) and string.find(lbl.Text, "Require") then
+                                            local sanitized = string.gsub(lbl.Text, ",", "")
+                                            local reqLvl = tonumber(string.match(sanitized, "(%d+)"))
+                                            local curLvl = pd:FindFirstChild("Levels") and pd.Levels.Value or 0
+                                            if reqLvl and curLvl < reqLvl then
+                                                canLoop = false
+                                            end
                                         end
                                     end
-                                end
-                                if canLoop then
-                                    Remotes.Loop:FireServer()
-                                    print("[Mhnaa [PRO]] 🔄 Đã tự động kích hoạt Loop reset thành công!")
+                                    if canLoop then
+                                        Remotes.Loop:FireServer()
+                                        print("[Mhnaa [PRO]] 🔄 Đã tự động kích hoạt Loop reset an toàn (map hiện tại đã xong)!")
+                                    end
                                 end
                             end
                         end
@@ -718,7 +822,9 @@ task.spawn(function()
                             local u141 = upgFolder and upgFolder:FindFirstChild("141") and upgFolder["141"].Value or 0
                             local u142 = upgFolder and upgFolder:FindFirstChild("142") and upgFolder["142"].Value or 0
                             local tokenCount = pd:FindFirstChild("Token") and pd.Token.Value or 0
-                            if (u139 < 1 or u140 < 1 or u141 < 1 or u142 < 1) and tokenCount < 4 then
+                            local tokenUpgradesDone = (u139 >= 1 and u140 >= 1 and u141 >= 1 and u142 >= 1)
+                            -- Nếu đã mua hết 4 upgrade Token, tuyệt đối không reset BlackHole nữa!
+                            if not (Config.BlockCompletedResets and tokenUpgradesDone) and (u139 < 1 or u140 < 1 or u141 < 1 or u142 < 1) and tokenCount < 4 then
                                 Remotes.Token:FireServer()
                             end
                         end
@@ -1189,6 +1295,60 @@ CombatTab:CreateToggle({
 local WorldTab = Window:CreateTab({
     Name = "Worlds & Teleport",
     Icon = "🚀"
+})
+
+WorldTab:CreateSection("🛡️ CHỐNG LẶP LẠI MAP ĐÃ HOÀN THÀNH (ANTI-REPEAT)")
+
+WorldTab:CreateToggle({
+    Title = "Bỏ Qua Map Đã Xong (Skip Completed Worlds)",
+    Description = "Tuyệt đối không bao giờ quay lại hay farm các map đã hoàn thành 100% (Galaxy, Spawn...)",
+    Default = Config.SkipCompletedWorlds,
+    Callback = function(val)
+        Config.SkipCompletedWorlds = val
+    end
+})
+
+WorldTab:CreateToggle({
+    Title = "Chặn Reset / Prestige Các Map Đã Max",
+    Description = "Chặn hoàn toàn việc kích hoạt Prestige/Evil/Dark Prestige khi map đó đã mua max hết upgrade",
+    Default = Config.BlockCompletedResets,
+    Callback = function(val)
+        Config.BlockCompletedResets = val
+    end
+})
+
+WorldTab:CreateToggle({
+    Title = "Auto Farm Tuần Tự (Smart World Flow)",
+    Description = "Tự động chuyển tới map tiếp theo chưa xong, xong map nào qua map đó, không lặp lại map cũ",
+    Default = Config.AutoProgressUnfinishedWorlds,
+    Callback = function(val)
+        Config.AutoProgressUnfinishedWorlds = val
+    end
+})
+
+WorldTab:CreateToggle({
+    Title = "Chỉ Loop Khi Xong Map Hiện Tại (Safe Auto Loop)",
+    Description = "Không bao giờ tự ý Loop reset khi bạn đang dở dang cày cuốc map chưa hoàn thành",
+    Default = Config.SafeAutoLoop,
+    Callback = function(val)
+        Config.SafeAutoLoop = val
+    end
+})
+
+WorldTab:CreateButton({
+    Title = "🎯 Dịch Chuyển Tới Map Cần Cày Kế Tiếp",
+    Description = "Tự động phát hiện và đưa bạn tới map đang cần cày tiếp theo (Bỏ qua map đã xong)",
+    Callback = function()
+        local nextWorld, coords = getNextUnfinishedWorld()
+        if Remotes and Remotes:FindFirstChild("ChangeWorld") then
+            Remotes.ChangeWorld:FireServer(nextWorld)
+            pcall(function()
+                local hrp = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                if hrp and coords then hrp.CFrame = CFrame.new(coords) end
+            end)
+            MhnaaUI:Notify({ Title = "🚀 Tiến Trình Thế Giới", Content = "Đang chuyển tới map cần cày: " .. nextWorld, Duration = 3 })
+        end
+    end
 })
 
 WorldTab:CreateSection("🌟 QUẢN LÝ TIẾN TRÌNH THẾ GIỚI (HANDS-FREE)")
