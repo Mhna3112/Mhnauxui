@@ -1,13 +1,5 @@
---[[
-    Credits:
-    Made by chris12089
-    UI Library based on Elerium and Icons from Lucide
-    Atlas BSS - Pure Reconstructed Source
---]]
-
 if _G.loading then return end
 _G.loading = true
-
 if not getthreadidentity or getthreadidentity() < 8 then
     local sg = cloneref and cloneref(game:GetService("StarterGui")) or game:GetService("StarterGui")
     sg:SetCore("SendNotification", {
@@ -16,7 +8,6 @@ if not getthreadidentity or getthreadidentity() < 8 then
         Duration = 10
     })
 end
-
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
@@ -24,21 +15,15 @@ local TweenService = game:GetService("TweenService")
 local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CoreGui = game:GetService("CoreGui")
-
 local LocalPlayer = Players.LocalPlayer
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local Humanoid = Character:WaitForChild("Humanoid")
 local RootPart = Character:WaitForChild("HumanoidRootPart")
-
 LocalPlayer.CharacterAdded:Connect(function(char)
     Character = char
     Humanoid = char:WaitForChild("Humanoid")
     RootPart = char:WaitForChild("HumanoidRootPart")
 end)
-
---------------------------------------------------------------------------------
--- STATE & CONFIGURATION (Pure Atlas BSS)
---------------------------------------------------------------------------------
 local State = {
     start = tick(),
     honeyatstart = (LocalPlayer:FindFirstChild("CoreStats") and LocalPlayer.CoreStats:FindFirstChild("Honey")) and LocalPlayer.CoreStats.Honey.Value or 0,
@@ -65,7 +50,6 @@ local State = {
     stickers = {},
     slots = {}
 }
-
 local Config = {
     autofarm = {
         enabled = false,
@@ -96,7 +80,6 @@ local Config = {
         antilag = false
     }
 }
-
 local Cooldowns = {
     ["Commando Chick"] = 0,
     ["CoconutCrab"] = 0,
@@ -104,14 +87,9 @@ local Cooldowns = {
     ["King Beetle Cave"] = 0,
     ["StumpSnail"] = 0
 }
-
---------------------------------------------------------------------------------
--- TASK MANAGER
---------------------------------------------------------------------------------
 local TaskManager = {
     tasks = {}
 }
-
 function TaskManager:Add(name, taskFunc)
     if self.tasks[name] then
         self:Cancel(name)
@@ -123,7 +101,6 @@ function TaskManager:Add(name, taskFunc)
         self.tasks[name] = thread
     end
 end
-
 function TaskManager:Cancel(name)
     local t = self.tasks[name]
     if t then
@@ -135,16 +112,10 @@ function TaskManager:Cancel(name)
         self.tasks[name] = nil
     end
 end
-
 function TaskManager:Get(name)
     return self.tasks[name] ~= nil
 end
-
---------------------------------------------------------------------------------
--- MOVEMENT & NAVIGATION CONTROLLER
---------------------------------------------------------------------------------
 local currentTween = nil
-
 local function stopMovement()
     if currentTween then
         currentTween:Cancel()
@@ -154,7 +125,6 @@ local function stopMovement()
         Humanoid:MoveTo(RootPart.Position)
     end
 end
-
 local function moveToPosition(targetCFrame, speed, useTween)
     if not RootPart or not Humanoid then return end
     if useTween then
@@ -170,10 +140,6 @@ local function moveToPosition(targetCFrame, speed, useTween)
         Humanoid.MoveToFinished:Wait()
     end
 end
-
---------------------------------------------------------------------------------
--- ANTI-LAG / FPS BOOSTER (Pure Atlas Function Ws)
---------------------------------------------------------------------------------
 local function runAntiLag()
     local toDestroy = {
         "Amulets", "Shell Amulets", "Stickbug Amulets", "BallArrowFolder",
@@ -187,18 +153,15 @@ local function runAntiLag()
         local obj = Workspace:FindFirstChild(name)
         if obj then obj:Destroy() end
     end
-
     local map = Workspace:FindFirstChild("Map")
     if map and map:FindFirstChild("Fences") then
         map.Fences:Destroy()
     end
-
     local hiveDeco = Workspace:FindFirstChild("HiveDeco")
     if hiveDeco then
         if hiveDeco:FindFirstChild("HiveModels") then hiveDeco.HiveModels:Destroy() end
         if hiveDeco:FindFirstChild("StickerCanvases") then hiveDeco.StickerCanvases:Destroy() end
     end
-
     local hivePlatforms = Workspace:FindFirstChild("HivePlatforms")
     if hivePlatforms then
         for _, p in ipairs(hivePlatforms:GetChildren()) do
@@ -211,7 +174,6 @@ local function runAntiLag()
             end
         end
     end
-
     local decorations = Workspace:FindFirstChild("Decorations")
     if decorations then
         local misc = decorations:FindFirstChild("Misc")
@@ -237,17 +199,12 @@ local function runAntiLag()
             end
         end
     end
-
     for _, part in ipairs(Workspace:GetChildren()) do
         if part.ClassName == "Part" and part.CollisionGroup == "BoostBallBarrier" then
             part:Destroy()
         end
     end
 end
-
---------------------------------------------------------------------------------
--- WORKSPACE HAZARDS & OBJECTS (Functions w & x)
---------------------------------------------------------------------------------
 local function setupWorkspaceListeners()
     Workspace.ChildAdded:Connect(function(child)
         local name = child.Name
@@ -300,7 +257,6 @@ local function setupWorkspaceListeners()
             State.petals[child] = true
         end
     end)
-
     Workspace.ChildRemoved:Connect(function(child)
         local name = child.Name
         if name == "WarningDisk" then
@@ -337,10 +293,6 @@ local function setupWorkspaceListeners()
         end
     end)
 end
-
---------------------------------------------------------------------------------
--- AUTOFARM ENGINE (Functions Z, m, ks, zs)
---------------------------------------------------------------------------------
 local function startAutoDig()
     if TaskManager:Get("autodig") then return end
     TaskManager:Add("autodig", function()
@@ -355,11 +307,9 @@ local function startAutoDig()
         end
     end)
 end
-
 local function stopAutoDig()
     TaskManager:Cancel("autodig")
 end
-
 local function runAutoFarm()
     while Config.autofarm.enabled and not State.stop do
         local coreStats = LocalPlayer:FindFirstChild("CoreStats")
@@ -368,28 +318,23 @@ local function runAutoFarm()
                 stopMovement()
                 local hivePos = LocalPlayer.SpawnPos.Value
                 moveToPosition(CFrame.new(hivePos), 50, Config.movement.tween)
-
                 local makeHoneyRemote = ReplicatedStorage:FindFirstChild("Events") and ReplicatedStorage.Events:FindFirstChild("PlayerHiveCommand")
                 if makeHoneyRemote then
                     makeHoneyRemote:FireServer({["Action"] = "MakeHoney"})
                 end
-
                 while coreStats.Pollen.Value > 0 and Config.autofarm.enabled do
                     task.wait(1)
                 end
             end
         end
-
         for coconut, _ in pairs(State.coconuts) do
             if coconut and coconut.Parent then
                 moveToPosition(coconut.CFrame, 60, Config.movement.tween)
             end
         end
-
         task.wait(0.2)
     end
 end
-
 local function toggleAutoFarm(enable)
     Config.autofarm.enabled = enable
     if enable then
@@ -401,10 +346,6 @@ local function toggleAutoFarm(enable)
         stopMovement()
     end
 end
-
---------------------------------------------------------------------------------
--- HAPPENINGS & SPECIALS (Sprouts, Puffshrooms, Stickers, Wind Shrine)
---------------------------------------------------------------------------------
 local function setupHappenings()
     local sproutsFolder = Workspace:FindFirstChild("Sprouts")
     if sproutsFolder then
@@ -417,7 +358,6 @@ local function setupHappenings()
             State.sprouts[child] = nil
         end)
     end
-
     local happenings = Workspace:FindFirstChild("Happenings")
     if happenings and happenings:FindFirstChild("Puffshrooms") then
         happenings.Puffshrooms.ChildAdded:Connect(function(p)
@@ -427,7 +367,6 @@ local function setupHappenings()
             State.puffshrooms[p] = nil
         end)
     end
-
     local hiddenStickers = Workspace:FindFirstChild("HiddenStickers")
     if hiddenStickers then
         hiddenStickers.ChildAdded:Connect(function(s)
@@ -438,10 +377,6 @@ local function setupHappenings()
         end)
     end
 end
-
---------------------------------------------------------------------------------
--- CLIENT FX HOOK (Function Cs)
---------------------------------------------------------------------------------
 local function hookClientFX()
     pcall(function()
         local localFX = ReplicatedStorage:FindFirstChild("LocalFX")
@@ -458,10 +393,6 @@ local function hookClientFX()
         end
     end)
 end
-
---------------------------------------------------------------------------------
--- TIME & NUMBER FORMATTING (Functions d & Es)
---------------------------------------------------------------------------------
 local function formatTime(seconds)
     if not seconds or seconds < 0 then return "00:00:00" end
     local h = math.floor(seconds / 3600)
@@ -469,7 +400,6 @@ local function formatTime(seconds)
     local s = math.floor(seconds % 60)
     return string.format("%02d:%02d:%02d", h, m, s)
 end
-
 local function formatNumber(num)
     if not num then return "0" end
     if num >= 1e12 then return string.format("%.2fT", num / 1e12)
@@ -478,16 +408,11 @@ local function formatNumber(num)
     elseif num >= 1e3 then return string.format("%.2fK", num / 1e3)
     else return tostring(math.floor(num)) end
 end
-
---------------------------------------------------------------------------------
--- ELERIUM UI INTERFACE (Atlas BSS by chris12089)
---------------------------------------------------------------------------------
 local function createAtlasUI()
     local AtlasGui = Instance.new("ScreenGui")
     AtlasGui.Name = "AtlasBSS"
     AtlasGui.ResetOnSpawn = false
     AtlasGui.Parent = CoreGui
-
     local Main = Instance.new("Frame")
     Main.Name = "Main"
     Main.Size = UDim2.new(0, 520, 0, 360)
@@ -498,7 +423,6 @@ local function createAtlasUI()
     Main.Draggable = true
     Main.Parent = AtlasGui
     Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 8)
-
     local TopBar = Instance.new("Frame")
     TopBar.Name = "TopBar"
     TopBar.Size = UDim2.new(1, 0, 0, 36)
@@ -506,7 +430,6 @@ local function createAtlasUI()
     TopBar.BorderSizePixel = 0
     TopBar.Parent = Main
     Instance.new("UICorner", TopBar).CornerRadius = UDim.new(0, 8)
-
     local Title = Instance.new("TextLabel")
     Title.Text = "Atlas BSS"
     Title.Size = UDim2.new(0, 200, 1, 0)
@@ -517,7 +440,6 @@ local function createAtlasUI()
     Title.TextXAlignment = Enum.TextXAlignment.Left
     Title.BackgroundTransparency = 1
     Title.Parent = TopBar
-
     local Credits = Instance.new("TextLabel")
     Credits.Text = "by chris12089"
     Credits.Size = UDim2.new(0, 100, 1, 0)
@@ -528,7 +450,6 @@ local function createAtlasUI()
     Credits.TextXAlignment = Enum.TextXAlignment.Left
     Credits.BackgroundTransparency = 1
     Credits.Parent = TopBar
-
     local TabContainer = Instance.new("Frame")
     TabContainer.Size = UDim2.new(0, 120, 1, -44)
     TabContainer.Position = UDim2.new(0, 8, 0, 40)
@@ -536,7 +457,6 @@ local function createAtlasUI()
     TabContainer.BorderSizePixel = 0
     TabContainer.Parent = Main
     Instance.new("UICorner", TabContainer).CornerRadius = UDim.new(0, 6)
-
     local ContentContainer = Instance.new("Frame")
     ContentContainer.Size = UDim2.new(1, -144, 1, -44)
     ContentContainer.Position = UDim2.new(0, 136, 0, 40)
@@ -544,14 +464,11 @@ local function createAtlasUI()
     ContentContainer.BorderSizePixel = 0
     ContentContainer.Parent = Main
     Instance.new("UICorner", ContentContainer).CornerRadius = UDim.new(0, 6)
-
     local tabs = { "Autofarm", "Movement", "Visuals", "Cooldowns", "Stats" }
     local tabButtons = {}
     local tabFrames = {}
-
     local tabLayout = Instance.new("UIListLayout", TabContainer)
     tabLayout.Padding = UDim.new(0, 4)
-
     local function selectTab(name)
         for tName, frame in pairs(tabFrames) do
             frame.Visible = (tName == name)
@@ -561,7 +478,6 @@ local function createAtlasUI()
             btn.TextColor3 = (tName == name) and Color3.fromRGB(255, 255, 255) or Color3.fromRGB(160, 160, 160)
         end
     end
-
     for _, name in ipairs(tabs) do
         local btn = Instance.new("TextButton")
         btn.Text = "  " .. name
@@ -574,7 +490,6 @@ local function createAtlasUI()
         btn.TextXAlignment = Enum.TextXAlignment.Left
         btn.Parent = TabContainer
         Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
-
         local frame = Instance.new("ScrollingFrame")
         frame.Size = UDim2.new(1, -12, 1, -12)
         frame.Position = UDim2.new(0, 6, 0, 6)
@@ -584,23 +499,18 @@ local function createAtlasUI()
         frame.Parent = ContentContainer
         local frameLayout = Instance.new("UIListLayout", frame)
         frameLayout.Padding = UDim.new(0, 6)
-
         tabButtons[name] = btn
         tabFrames[name] = frame
-
         btn.MouseButton1Click:Connect(function()
             selectTab(name)
         end)
     end
-
-    -- Helper: Toggle
     local function addToggle(parent, text, default, callback)
         local f = Instance.new("Frame")
         f.Size = UDim2.new(1, -8, 0, 32)
         f.BackgroundColor3 = Color3.fromRGB(34, 34, 42)
         f.Parent = parent
         Instance.new("UICorner", f).CornerRadius = UDim.new(0, 6)
-
         local l = Instance.new("TextLabel")
         l.Text = text
         l.Size = UDim2.new(1, -50, 1, 0)
@@ -611,7 +521,6 @@ local function createAtlasUI()
         l.TextXAlignment = Enum.TextXAlignment.Left
         l.BackgroundTransparency = 1
         l.Parent = f
-
         local b = Instance.new("TextButton")
         b.Text = default and utf8.char(10003) or ""
         b.Size = UDim2.new(0, 22, 0, 22)
@@ -622,7 +531,6 @@ local function createAtlasUI()
         b.TextSize = 13
         b.Parent = f
         Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
-
         local state = default
         b.MouseButton1Click:Connect(function()
             state = not state
@@ -631,8 +539,6 @@ local function createAtlasUI()
             callback(state)
         end)
     end
-
-    -- Tab: Autofarm
     addToggle(tabFrames["Autofarm"], "Autofarm", Config.autofarm.enabled, function(val)
         toggleAutoFarm(val)
     end)
@@ -648,8 +554,6 @@ local function createAtlasUI()
     addToggle(tabFrames["Autofarm"], "Farm Meteor Showers", Config.autofarm.farmmeteorshowers, function(val)
         Config.autofarm.farmmeteorshowers = val
     end)
-
-    -- Tab: Movement
     addToggle(tabFrames["Movement"], "Tween", Config.movement.tween, function(val)
         Config.movement.tween = val
     end)
@@ -659,8 +563,6 @@ local function createAtlasUI()
     addToggle(tabFrames["Movement"], "Fast Shower", Config.movement.fastshower, function(val)
         Config.movement.fastshower = val
     end)
-
-    -- Tab: Visuals
     addToggle(tabFrames["Visuals"], "Antilag", Config.visuals.antilag, function(val)
         Config.visuals.antilag = val
         if val then runAntiLag() end
@@ -674,8 +576,6 @@ local function createAtlasUI()
     addToggle(tabFrames["Visuals"], "Hide Tokens", Config.visuals.hidetokens, function(val)
         Config.visuals.hidetokens = val
     end)
-
-    -- Tab: Cooldowns & Stats Labels
     local bossList = { "Commando Chick", "CoconutCrab", "TunnelBear", "King Beetle Cave", "StumpSnail" }
     local bossLabels = {}
     for _, bName in ipairs(bossList) do
@@ -690,7 +590,6 @@ local function createAtlasUI()
         Instance.new("UICorner", l).CornerRadius = UDim.new(0, 6)
         bossLabels[bName] = l
     end
-
     local statList = { "Uptime", "ServerUptime", "SessionHoney", "HoneyPerHour" }
     local statLabels = {}
     for _, sName in ipairs(statList) do
@@ -705,36 +604,26 @@ local function createAtlasUI()
         Instance.new("UICorner", l).CornerRadius = UDim.new(0, 6)
         statLabels[sName] = l
     end
-
-    -- Live Loop
     task.spawn(function()
         while task.wait(1) do
             local elapsed = tick() - State.start
             local currentHoney = (LocalPlayer:FindFirstChild("CoreStats") and LocalPlayer.CoreStats:FindFirstChild("Honey")) and LocalPlayer.CoreStats.Honey.Value or 0
             local sessionHoney = math.max(0, currentHoney - State.honeyatstart)
             local honeyRate = elapsed > 0 and (sessionHoney / elapsed) * 3600 or 0
-
             statLabels.Uptime.Text = "Uptime: " .. formatTime(elapsed)
             statLabels.ServerUptime.Text = "Server Uptime: " .. formatTime(Workspace.DistributedGameTime)
             statLabels.SessionHoney.Text = "Session Honey: " .. formatNumber(sessionHoney)
             statLabels.HoneyPerHour.Text = "Honey per Hour: " .. formatNumber(honeyRate)
-
             for _, bName in ipairs(bossList) do
                 local cd = Cooldowns[bName] or 0
                 bossLabels[bName].Text = bName .. ": " .. (cd > 0 and formatTime(cd) or utf8.char(10003))
             end
         end
     end)
-
     selectTab("Autofarm")
 end
-
---------------------------------------------------------------------------------
--- INITIALIZATION
---------------------------------------------------------------------------------
 setupWorkspaceListeners()
 setupHappenings()
 hookClientFX()
 createAtlasUI()
-
 print("[Atlas BSS] Loaded successfully.")
